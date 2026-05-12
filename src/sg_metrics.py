@@ -70,7 +70,7 @@ def iou_score(
 
 
 # --------------------------------------------------------------------------- #
-# SMP-style stats accumulation (used by micro/macro reductions during training)
+# SMP-style stats accumulation (used by micro reductions during training)
 # --------------------------------------------------------------------------- #
 def get_smp_stats(
     logits: torch.Tensor,
@@ -92,24 +92,12 @@ def micro_iou_from_stats(tp, fp, fn, tn) -> torch.Tensor:
     return smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
 
 
-def macro_dice_from_stats(tp, fp, fn, tn) -> torch.Tensor:
-    """Per-image Dice averaged across the dataset (SMP imagewise)."""
-    return smp.metrics.f1_score(tp, fp, fn, tn, reduction="micro-imagewise")
-
-
-def macro_iou_from_stats(tp, fp, fn, tn) -> torch.Tensor:
-    """Per-image IoU averaged across the dataset (SMP imagewise)."""
-    return smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
-
-
 # --------------------------------------------------------------------------- #
 # Training-time metric registry (used by sg_lightning_module.py)
 # --------------------------------------------------------------------------- #
 _METRIC_REGISTRY: Dict[str, Callable] = {
     "micro_dice": micro_dice_from_stats,
     "micro_iou":  micro_iou_from_stats,
-    "macro_dice": macro_dice_from_stats,
-    "macro_iou":  macro_iou_from_stats,
 }
 
 
@@ -129,12 +117,8 @@ def get_metric_kind_pairs(kind: str) -> Dict[str, Callable]:
     Returns a dict {logged_metric_name: reduction_fn} for a metric "kind".
     The Lightning module logs each entry every validation epoch.
 
-    Supported kinds:
-        "micro"        -> {"val_dice": micro_dice, "val_iou": micro_iou}
-        "macro"        -> {"val_dice": macro_dice, "val_iou": macro_iou}
-        "micro_macro"  -> all four with explicit suffixes plus aliases
-                          (val_dice -> micro) so EarlyStopping(monitor="val_dice")
-                          still works without changes.
+    Supported kind:
+        "micro" -> {"val_dice": micro_dice, "val_iou": micro_iou}
     """
     k = kind.lower()
     if k == "micro":
@@ -142,22 +126,7 @@ def get_metric_kind_pairs(kind: str) -> Dict[str, Callable]:
             "val_dice": micro_dice_from_stats,
             "val_iou":  micro_iou_from_stats,
         }
-    if k == "macro":
-        return {
-            "val_dice": macro_dice_from_stats,
-            "val_iou":  macro_iou_from_stats,
-        }
-    if k == "micro_macro":
-        return {
-            "val_dice_micro": micro_dice_from_stats,
-            "val_iou_micro":  micro_iou_from_stats,
-            "val_dice_macro": macro_dice_from_stats,
-            "val_iou_macro":  macro_iou_from_stats,
-            # aliases so EarlyStopping/ModelCheckpoint(monitor="val_dice") works:
-            "val_dice":       micro_dice_from_stats,
-            "val_iou":        micro_iou_from_stats,
-        }
-    raise ValueError(f"unknown metric kind: {kind!r}")
+    raise ValueError(f"unknown metric kind: {kind!r} (only 'micro' is supported)")
 
 
 # --------------------------------------------------------------------------- #

@@ -10,7 +10,7 @@ src/sg_metrics.py and src/optimizers.py — never by editing this file.
 Defaults match the FigShare reference notebook exactly:
     optimizer    = adam, lr=1e-4
     scheduler    = reduce_on_plateau, factor=0.1, patience=5, monitor=val_loss
-    metric_kind  = "micro_macro"  (logs both, EarlyStopping uses micro by default)
+    metric_kind  = "micro"  (globally pooled Dice/IoU; EarlyStopping monitors val_dice)
 """
 
 from __future__ import annotations
@@ -47,9 +47,8 @@ class BrainTumorSegModule(pl.LightningModule):
         'epoch' or 'step'. Default 'epoch'.
 
     metric_kind
-        "micro" | "macro" | "micro_macro". Controls which metrics are logged
-        at validation/test time. Default "micro_macro" (logs both side-by-side
-        plus 'val_dice'/'val_iou' aliases for EarlyStopping defaults).
+        "micro". Globally pooled Dice/IoU logged as val_dice / val_iou.
+        Only "micro" is supported.
     """
 
     def __init__(
@@ -66,7 +65,7 @@ class BrainTumorSegModule(pl.LightningModule):
         scheduler_monitor: str = "val_loss",
         scheduler_interval: str = "epoch",
         # ---- metrics ----
-        metric_kind: str = "micro_macro",
+        metric_kind: str = "micro",
     ):
         super().__init__()
         self.model = model

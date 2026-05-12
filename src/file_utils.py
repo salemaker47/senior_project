@@ -11,7 +11,6 @@ Three orthogonal axes define every artifact:
 Layout (mirrors §3 of the project instruction):
     <root>/
         data/<dataset>/
-            raw/
             processed/
                 images/<image_id>.png
                 masks/<image_id>.png
@@ -24,7 +23,7 @@ Layout (mirrors §3 of the project instruction):
                 folds/fold_X_{train,val,test}.csv
         outputs/
             checkpoints/<task>/<dataset>/<exp>/fold_X/{best.ckpt, best_model.pt, experiment_config.json}
-            logs/<task>/<dataset>/<exp>/fold_X/lightning_logs/version_0/metrics.csv
+            logs/<task>/<dataset>/<exp>/fold_X/version_0/metrics.csv
             figures/<task>/<dataset>/<exp>/fold_X/...
             figures/data_preparation/<dataset>/...
             tables/<task>/<dataset>/<exp>/...
@@ -138,7 +137,6 @@ def dataset_paths(root: PathLike, dataset: str) -> Dict[str, Path]:
 
     paths: Dict[str, Path] = {
         "dataset_root":              base,
-        "raw":                       base / "raw",
         "processed":                 base / "processed",
         "images":                    base / "processed" / "images",
         "masks":                     base / "processed" / "masks",
@@ -151,7 +149,7 @@ def dataset_paths(root: PathLike, dataset: str) -> Dict[str, Path]:
 
     # Create directories only (not file paths).
     for key in (
-        "dataset_root", "raw", "processed", "images", "masks",
+        "dataset_root", "processed", "images", "masks",
         "splits", "figures_dataprep",
     ):
         paths[key].mkdir(parents=True, exist_ok=True)
@@ -226,7 +224,7 @@ def experiment_paths(
         "best_model":             ckpt_dir / "best_model.pt",
         "experiment_config_json": ckpt_dir / "experiment_config.json",
         "logs":                   log_dir,
-        "metrics_csv":            log_dir / "lightning_logs" / "version_0" / "metrics.csv",
+        "metrics_csv":            log_dir / "version_0" / "metrics.csv",
         "figures":                fig_dir,
         "tables":                 table_dir,
     }

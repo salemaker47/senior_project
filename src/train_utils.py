@@ -278,7 +278,6 @@ def build_callbacks(
 def build_trainer(
     callbacks: List[pl.Callback],
     log_dir: PathLike,
-    log_name: str = "lightning_logs",
     max_epochs: int = 50,
     accelerator: str = "auto",
     devices: Any = "auto",
@@ -292,9 +291,10 @@ def build_trainer(
     metrics.csv we can replot or aggregate later.
 
     `precision="auto"` selects "16-mixed" on GPU and "32-true" on CPU.
+    Logs land at log_dir/version_0/metrics.csv (no lightning_logs subfolder).
     """
     Path(log_dir).mkdir(parents=True, exist_ok=True)
-    logger = CSVLogger(save_dir=str(log_dir), name=log_name)
+    logger = CSVLogger(save_dir=str(log_dir), name="", version=0)
 
     if precision == "auto":
         precision = "16-mixed" if torch.cuda.is_available() else "32-true"

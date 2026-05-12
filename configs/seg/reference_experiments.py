@@ -56,7 +56,7 @@ BASE_EXPERIMENT: Dict[str, Any] = {
     "scheduler_kwargs":  {"mode": "min", "factor": 0.1, "patience": 5, "min_lr": 1e-7},
     "scheduler_monitor": "val_loss",
 
-    "metric_kind": "micro_macro",
+    "metric_kind": "micro",
 
     "max_epochs": 100,
     "patience":   15,
