@@ -1,44 +1,44 @@
 """
 configs/seg/reference_experiments.py
 
-The 7 canonical reference experiments for the FigShare reproduction (§13 of
-the project instruction). Replaces the old `00_env_setups.ipynb` cookbook —
-now importable + version-controlled instead of copy-paste.
+The 7 canonical recipes for segmentation experiments (§13 of the project
+instruction). Replaces the old `00_env_setups.ipynb` cookbook.
 
-Usage in NB03 / NB05 cell 3:
+Pattern: BASE_EXPERIMENT holds defaults shared by every run. _RECIPE_OVERRIDES
+holds just the deltas per recipe (loss/model/preprocessing). dataset,
+split_scheme, fold, and name are passed as explicit arguments to
+`get_experiment(...)` — so the SAME 7 recipes drive runs on both figshare
+and brats2020.
 
-    from configs.seg.reference_experiments import REFERENCE_EXPERIMENTS, get_experiment
-    EXPERIMENT = get_experiment("01_dice_image_level")   # safe copy, mutate freely
-    EXPERIMENT["fold"] = 3                               # per-run override
+Usage:
+    # FigShare §13 reference reproduction (image_level matches the paper)
+    EXPERIMENT = get_experiment("01_dice", fold=1)
+        # -> name="01_dice_image_level", dataset="figshare",
+        #    split_scheme="image_level", fold=1
 
-Pattern: a single `BASE_EXPERIMENT` dict holds every default that is shared
-across all 7 experiments. Each experiment is then `BASE_EXPERIMENT` updated
-with only the fields that make it unique (loss / model / preprocessing / batch).
-This means a single edit to BASE_EXPERIMENT (e.g. new max_epochs default)
-propagates to all 7 without 7 separate edits.
+    # Same recipe on BraTS2020 with the methodologically correct scheme
+    EXPERIMENT = get_experiment("01_dice", dataset="brats2020",
+                                split_scheme="patient_level", fold=1)
+        # -> name="01_dice_patient_level", dataset="brats2020",
+        #    split_scheme="patient_level", fold=1
 
-To add an 8th reference experiment: append one entry to
-`_EXPERIMENT_OVERRIDES` below. To run a non-reference one-off (e.g. trying a
-new optimizer just on fold 1), build the EXPERIMENT dict inline in the
-notebook instead — registries are for canonical, reproducible recipes.
+    # Iterate over all 7 recipes
+    for recipe in REFERENCE_RECIPES:
+        EXPERIMENT = get_experiment(recipe, dataset="brats2020",
+                                    split_scheme="patient_level", fold=1)
 """
 
 from copy import deepcopy
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 # --------------------------------------------------------------------------- #
-# Shared defaults (every reference experiment starts from this)
+# Defaults shared across all reference recipes
 # --------------------------------------------------------------------------- #
 BASE_EXPERIMENT: Dict[str, Any] = {
-    # filled per-experiment: name, loss_name, loss_kwargs,
-    # plus rare overrides: model_name, preprocessing, batch_size
+    "task": "segmentation",
+    # name, dataset, split_scheme, fold are passed per-call to get_experiment.
 
-    "task":         "segmentation",
-    "dataset":      "figshare",
-    "split_scheme": "image_level",
-
-    "fold":        1,
     "image_size":  256,
     "batch_size":  8,
     "num_workers": 2,
@@ -66,78 +66,102 @@ BASE_EXPERIMENT: Dict[str, Any] = {
 
 
 # --------------------------------------------------------------------------- #
-# Per-experiment overrides (only the fields each experiment changes)
+# The 7 §13 recipes — each is JUST the delta from BASE_EXPERIMENT
 # --------------------------------------------------------------------------- #
-_EXPERIMENT_OVERRIDES: Dict[str, Dict[str, Any]] = {
-    "01_dice_image_level": {
-        "name":        "01_dice_image_level",
+_RECIPE_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "01_dice": {
         "loss_name":   "dice",
         "loss_kwargs": {},
     },
-    "02_bce_image_level": {
-        "name":        "02_bce_image_level",
+    "02_bce": {
         "loss_name":   "bce",
         "loss_kwargs": {},
     },
-    "03_dicebce_image_level": {
-        "name":        "03_dicebce_image_level",
+    "03_dicebce": {
         "loss_name":   "dice_bce",
         "loss_kwargs": {"bce_weight": 1.0, "dice_weight": 1.0},
     },
-    "04_dicefocal_image_level": {
-        "name":        "04_dicefocal_image_level",
+    "04_dicefocal": {
         "loss_name":   "dice_focal",
         "loss_kwargs": {
             "dice_weight":  1.0,
             "focal_weight": 1.0,
-            "alpha":        0.25,   # Focal class-balancing factor
-            "gamma":        2.0,    # Focal modulation
+            "alpha":        0.25,
+            "gamma":        2.0,
         },
     },
-    "05_lovasz_image_level": {
-        "name":        "05_lovasz_image_level",
+    "05_lovasz": {
         "loss_name":   "lovasz",
         "loss_kwargs": {},
     },
-    "06_clahe_dicebce_image_level": {
-        "name":          "06_clahe_dicebce_image_level",
-        "preprocessing": "clahe",        # ← only experiment with CLAHE
+    "06_clahe_dicebce": {
+        "preprocessing": "clahe",                          # only recipe with CLAHE
         "loss_name":     "dice_bce",
         "loss_kwargs":   {"bce_weight": 1.0, "dice_weight": 1.0},
     },
-    "07_unetpp_effb4_dicebce_image_level": {
-        "name":        "07_unetpp_effb4_dicebce_image_level",
-        "model_name":  "smp_unetpp_efficientnetb4",   # ← only non-default model
-        "batch_size":  6,                              # ← reduced for VRAM
+    "07_unetpp_effb4_dicebce": {
+        "model_name":  "smp_unetpp_efficientnetb4",        # different architecture
+        "batch_size":  6,                                   # reduced for VRAM
         "loss_name":   "dice_bce",
         "loss_kwargs": {"bce_weight": 1.0, "dice_weight": 1.0},
     },
 }
 
+REFERENCE_RECIPES = sorted(_RECIPE_OVERRIDES.keys())
+
 
 # --------------------------------------------------------------------------- #
-# Public registry — fully materialized for easy iteration
+# Public API
 # --------------------------------------------------------------------------- #
-def _build(overrides: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge BASE_EXPERIMENT with per-experiment overrides into a complete dict."""
+def get_experiment(
+    recipe: str,
+    *,
+    dataset: str = "figshare",
+    split_scheme: str = "image_level",
+    fold: int = 1,
+    name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Compose a complete EXPERIMENT dict by merging BASE_EXPERIMENT + a recipe
+    + per-call dataset/scheme/fold/name.
+
+    Parameters
+    ----------
+    recipe : one of REFERENCE_RECIPES (`01_dice` ... `07_unetpp_effb4_dicebce`).
+    dataset : "figshare" | "brats2020".
+    split_scheme : "image_level" | "patient_level".
+    fold : 1..5.
+    name : if None, auto-composed as f"{recipe}_{split_scheme}" so output
+           directories like `outputs/checkpoints/.../01_dice_image_level/` vs
+           `.../01_dice_patient_level/` separate naturally.
+
+    Returns
+    -------
+    dict — safe to mutate (each call is a fresh deep copy).
+    """
+    if recipe not in _RECIPE_OVERRIDES:
+        raise KeyError(
+            f"unknown recipe: {recipe!r}. Available: {REFERENCE_RECIPES}"
+        )
+
     cfg = deepcopy(BASE_EXPERIMENT)
-    cfg.update(overrides)
+    cfg.update(_RECIPE_OVERRIDES[recipe])
+    cfg["dataset"]      = dataset
+    cfg["split_scheme"] = split_scheme
+    cfg["fold"]         = int(fold)
+    cfg["recipe"]       = recipe                          # track for analysis
+    cfg["name"]         = name if name is not None else f"{recipe}_{split_scheme}"
     return cfg
 
 
+# Backward-compat: precomputed registry keyed by the old combined name.
+# Lets old code that does `REFERENCE_EXPERIMENTS["01_dice_image_level"]` keep
+# working. New code should call get_experiment() directly.
 REFERENCE_EXPERIMENTS: Dict[str, Dict[str, Any]] = {
-    name: _build(ov) for name, ov in _EXPERIMENT_OVERRIDES.items()
+    f"{recipe}_image_level":   get_experiment(recipe, split_scheme="image_level")
+    for recipe in REFERENCE_RECIPES
 }
-
-
-def get_experiment(name: str) -> Dict[str, Any]:
-    """
-    Return a *fresh deep copy* of the named reference experiment so mutating
-    `EXPERIMENT["fold"] = 3` in the notebook doesn't pollute the registry.
-    """
-    if name not in REFERENCE_EXPERIMENTS:
-        raise KeyError(
-            f"unknown reference experiment: {name!r}. "
-            f"Available: {sorted(REFERENCE_EXPERIMENTS.keys())}"
-        )
-    return deepcopy(REFERENCE_EXPERIMENTS[name])
+REFERENCE_EXPERIMENTS.update({
+    f"{recipe}_patient_level": get_experiment(recipe, split_scheme="patient_level")
+    for recipe in REFERENCE_RECIPES
+})
