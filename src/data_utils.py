@@ -152,19 +152,42 @@ def create_patient_folds(
     """
     Build K patient-disjoint (train_pool, test) splits.
 
-    Tries StratifiedGroupKFold first (preserves class balance per fold while
-    keeping patients disjoint); falls back to plain GroupKFold if SGKFold
-    isn't available or fails on the data.
-    """
-    groups = metadata_df[group_col].astype(str).values
-    y      = metadata_df[stratify_col].astype(str).values
+    Strategy:
+        - Multi-class datasets (>=2 unique `stratify_col` values) ->
+          StratifiedGroupKFold (preserves class balance per fold while keeping
+          patients disjoint).
+        - Single-class datasets (e.g. brats2020 where every row is 'glioma')
+          cannot be stratified — n_classes < n_splits violates the algorithm.
+          Patients are pre-shuffled with `random_state` then split by plain
+          GroupKFold (sklearn's GroupKFold is otherwise deterministic on
+          input order).
+        - If StratifiedGroupKFold raises unexpectedly on multi-class data,
+          we fall back to the same shuffled-GroupKFold path.
 
-    if _HAS_STRATIFIED_GROUP_KFOLD:
+    Returns
+    -------
+    (splits, method_name)
+        splits: list of n_splits tuples (train_pool_indices, test_indices)
+                indexing positions in `metadata_df`.
+        method_name: "StratifiedGroupKFold" | "GroupKFold_singleclass"
+                   | "GroupKFold_fallback"
+    """
+    groups = metadata_df[group_col].astype(str).to_numpy()
+    y      = metadata_df[stratify_col].astype(str).to_numpy()
+    n_classes = len(np.unique(y))
+
+    # ---- Multi-class -> StratifiedGroupKFold ----
+    if _HAS_STRATIFIED_GROUP_KFOLD and n_classes >= 2:
         try:
             sgkf = StratifiedGroupKFold(
                 n_splits=n_splits, shuffle=True, random_state=random_state,
             )
             splits = list(sgkf.split(np.zeros(len(metadata_df)), y, groups))
+            print(
+                f"[create_patient_folds] StratifiedGroupKFold | "
+                f"classes={n_classes}, patients={len(np.unique(groups))}, "
+                f"n_splits={n_splits}, random_state={random_state}"
+            )
             return splits, "StratifiedGroupKFold"
         except Exception as e:
             print(
@@ -172,9 +195,38 @@ def create_patient_folds(
                 f"falling back to GroupKFold."
             )
 
+    # ---- Single-class (or fallback) -> shuffled GroupKFold ----
+    rng = np.random.default_rng(random_state)
+    unique_patients = sorted(set(groups.tolist()))
+    permutation = rng.permutation(len(unique_patients))
+    new_order = {unique_patients[i]: rank for rank, i in enumerate(permutation)}
+
+    permuted = metadata_df.assign(
+        _p_order=metadata_df[group_col].astype(str).map(new_order)
+    )
+    sort_keys = ["_p_order"]
+    if "image_id" in metadata_df.columns:
+        sort_keys.append("image_id")
+    permuted = permuted.sort_values(sort_keys).drop(columns=["_p_order"])
+
+    permuted_to_original = permuted.index.to_numpy()
+    perm_groups = permuted[group_col].astype(str).to_numpy()
+
     gkf = GroupKFold(n_splits=n_splits)
-    splits = list(gkf.split(np.zeros(len(metadata_df)), y, groups))
-    return splits, "GroupKFold"
+    splits: List[Tuple[np.ndarray, np.ndarray]] = []
+    for tv_idx_p, te_idx_p in gkf.split(np.zeros(len(permuted)), groups=perm_groups):
+        splits.append(
+            (permuted_to_original[tv_idx_p], permuted_to_original[te_idx_p])
+        )
+
+    method = "GroupKFold_singleclass" if n_classes < 2 else "GroupKFold_fallback"
+    print(
+        f"[create_patient_folds] {method} | "
+        f"classes={n_classes}, patients={len(unique_patients)}, "
+        f"n_splits={n_splits}, random_state={random_state} "
+        f"(patients pre-shuffled with random_state)"
+    )
+    return splits, method
 
 
 def make_train_val_from_pool(
