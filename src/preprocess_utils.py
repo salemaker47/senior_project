@@ -57,6 +57,7 @@ DATASET_NAME_BRATS2020  = "brats2020"
 # Tumor-class label space — matches the original figshare encoding so that
 # rows from different datasets concatenate cleanly via tumor_class_id.
 TUMOR_CLASS_NAMES: Dict[int, str] = {
+    0: "no_tumor",
     1: "meningioma",
     2: "glioma",
     3: "pituitary",
@@ -372,13 +373,18 @@ def convert_brats2020_h5_to_png_record(
         image_out_path, mask_out_path, h5_path, path_style, project_root,
     )
 
+    # Label by slice content: slices with no visible tumor are "no_tumor".
+    # BraTS2020 patients are all glioma, so tumor-bearing slices get "glioma".
+    slice_class = "glioma" if tumor_pixels_native > 0 else "no_tumor"
+
     return {
         "image_id":             image_id,
         "patient_id":           patient_id,
         "image_path":           img_p,
         "mask_path":            msk_p,
-        "tumor_class":          "glioma",
-        "tumor_class_id":       TUMOR_CLASS_IDS["glioma"],   # = 2, same as figshare
+        "tumor_class":          slice_class,
+        "tumor_class_id":       TUMOR_CLASS_IDS[slice_class],
+        "has_tumor":            tumor_pixels_native > 0,
         "dataset":              DATASET_NAME_BRATS2020,
         "source_path":          src_p,
         "modality":             mod,
