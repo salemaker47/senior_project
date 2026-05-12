@@ -52,6 +52,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile as _zipfile
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Tuple, Union
 
@@ -217,15 +218,33 @@ def copy_to_local(
         src = drive_root / "data" / dataset
         dst = local_data / dataset
 
-        if not src.exists():
+        zip_src = drive_root / "data" / f"{dataset}.zip"
+
+        if not src.exists() and not zip_src.exists():
             print(f"[copy_to_local] WARNING: source not found, skipping: {src}")
             continue
         if dst.exists():
             print(f"[copy_to_local] already present, skipping: {dst}")
             continue
 
-        print(f"[copy_to_local] copying {src} -> {dst}")
-        shutil.copytree(src, dst)
+        if zip_src.exists():
+            local_zip = local_data / f"{dataset}.zip"
+            size_mb = zip_src.stat().st_size / 1_048_576
+            print(f"[copy_to_local] copying zip {zip_src.name} ({size_mb:.0f} MB) ...")
+            shutil.copy2(str(zip_src), str(local_zip))
+            print(f"[copy_to_local] extracting to {local_data} ...")
+            r = subprocess.run(
+                ["unzip", "-q", str(local_zip), "-d", str(local_data)],
+                capture_output=True, text=True,
+            )
+            if r.returncode != 0:
+                with _zipfile.ZipFile(str(local_zip)) as zf:
+                    zf.extractall(str(local_data))
+            local_zip.unlink(missing_ok=True)
+            print(f"[copy_to_local] extracted {dataset}")
+        else:
+            print(f"[copy_to_local] copying {src} -> {dst}")
+            shutil.copytree(src, dst)
 
     (local_root / "outputs").mkdir(parents=True, exist_ok=True)
     os.chdir(local_root)

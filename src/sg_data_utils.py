@@ -119,7 +119,9 @@ def build_train_transform(
             ),
             A.RandomBrightnessContrast(brightness_limit=0.15, contrast_limit=0.15, p=0.5),
             A.GaussianBlur(blur_limit=(3, 3), p=0.2),
-            A.GaussNoise(std_range=(0.04, 0.2), p=0.2),
+            # std_range in albumentations >=2.0 is relative to image max (255 for uint8).
+            # (0.012, 0.028) ≈ std 3–7 px, matching reference's var_limit=(10,50).
+            A.GaussNoise(std_range=(0.012, 0.028), p=0.2),
         ]
 
     else:
