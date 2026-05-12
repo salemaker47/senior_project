@@ -193,51 +193,83 @@ class TrainingTimingCallback(pl.Callback):
 # --------------------------------------------------------------------------- #
 # Callbacks
 # --------------------------------------------------------------------------- #
+class EpochSummaryPrinter(pl.Callback):
+    """
+    Print one persistent line per validation epoch — alongside the default
+    progress bar — so per-epoch metrics survive notebook reopens (the
+    progress bar's line gets overwritten on reload; print() lines do not).
+
+    Output format:
+        [HH:MM:SS] E  12/99 | train_loss=0.2410 | val_loss=0.3120 | val_dice=0.7820 | val_iou=0.6510
+    """
+
+    def __init__(
+        self,
+        metric_keys=("train_loss", "val_loss", "val_dice", "val_iou"),
+    ):
+        super().__init__()
+        self.metric_keys = tuple(metric_keys)
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        if trainer.sanity_checking:
+            return                                     # skip the pre-train sanity check
+        m = trainer.callback_metrics
+        parts = [f"E{trainer.current_epoch:>3}/{trainer.max_epochs - 1}"]
+        for key in self.metric_keys:
+            v = m.get(key)
+            if v is None:
+                continue
+            try:
+                parts.append(f"{key}={float(v):.4f}")
+            except (TypeError, ValueError):
+                pass
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        # flush=True forces Colab to commit the line immediately, so it
+        # appears in the output stream right after each validation epoch
+        # rather than being held in a buffer.
+        print(f"[{ts}] " + " | ".join(parts), flush=True)
+
+
 def build_callbacks(
-    ckpt_dir: PathLike,
+    ckpt_dir,
     monitor: str = "val_dice",
     mode: str = "max",
-    patience: int = 12,
-    save_top_k: int = 1,
-    filename: str = "best",
-    include_timing: bool = True,
-) -> List[pl.Callback]:
+    patience: int = 15,
+    epoch_summary_keys=("train_loss", "val_loss", "val_dice", "val_iou"),
+):
     """
-    Returns:
-        ModelCheckpoint           saves <ckpt_dir>/best.ckpt on improvement
-        EarlyStopping             stops when monitor stalls for `patience` epochs
-        LearningRateMonitor       logs LR each epoch
-        TrainingTimingCallback    (if include_timing=True) — wall-clock + peak GPU mem
-
-    The TrainingTimingCallback instance is the LAST item of the returned list,
-    so callers can grab it for end-of-training stats:
-        cbs = build_callbacks(...)
-        timing_cb = cbs[-1]
+    Build the standard callback list for a seg training run:
+        - ModelCheckpoint        (save best.ckpt on `monitor`)
+        - EarlyStopping          (stop when `monitor` plateaus for `patience` epochs)
+        - LearningRateMonitor    (log LR per epoch — useful for ReduceLROnPlateau)
+        - TrainingTimingCallback (Enhancement E — captures train_seconds, peak_gpu_mem)
+        - EpochSummaryPrinter    (persistent one-line-per-epoch in notebook output)
     """
-    Path(ckpt_dir).mkdir(parents=True, exist_ok=True)
+    ckpt_dir = Path(ckpt_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    ckpt_cb = ModelCheckpoint(
-        dirpath=str(ckpt_dir),
-        filename=filename,
-        monitor=monitor,
-        mode=mode,
-        save_top_k=save_top_k,
-        save_last=False,
-        auto_insert_metric_name=False,
-        verbose=True,
-    )
-    early_cb = EarlyStopping(
-        monitor=monitor,
-        mode=mode,
-        patience=patience,
-        verbose=True,
-    )
-    lr_cb = LearningRateMonitor(logging_interval="epoch")
-
-    cbs: List[pl.Callback] = [ckpt_cb, early_cb, lr_cb]
-    if include_timing:
-        cbs.append(TrainingTimingCallback())
-    return cbs
+    callbacks = [
+        ModelCheckpoint(
+            dirpath=str(ckpt_dir),
+            filename="best",
+            monitor=monitor,
+            mode=mode,
+            save_top_k=1,
+            save_last=False,
+            auto_insert_metric_name=False,
+        ),
+        EarlyStopping(
+            monitor=monitor,
+            mode=mode,
+            patience=patience,
+            verbose=True,
+        ),
+        LearningRateMonitor(logging_interval="epoch"),
+        TrainingTimingCallback(),
+        EpochSummaryPrinter(metric_keys=epoch_summary_keys),
+    ]
+    return callbacks
 
 
 # --------------------------------------------------------------------------- #
