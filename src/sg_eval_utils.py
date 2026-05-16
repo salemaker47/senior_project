@@ -28,7 +28,6 @@ Public API:
 
     # §13 reference Dice scores (for Enhancement B's delta_vs_reference)
     REFERENCE_DICE: Dict[str, float]
-    get_reference_dice(experiment_name) -> Optional[float]
 
 Column convention
 -----------------
@@ -63,6 +62,11 @@ from src.eval_utils import enriched_aggregate
 # --------------------------------------------------------------------------- #
 # §13 reference Dice scores (for Enhancement B's delta_vs_reference column)
 # --------------------------------------------------------------------------- #
+# Only image_level experiments have published reference values (the FigShare
+# reference notebook used image-level KFold). patient_level experiments produce
+# no match here → get_reference_dice returns None → delta_vs_reference = None
+# in cv_summary. Both schemes are fully supported; the delta column is simply
+# omitted for patient_level runs.
 REFERENCE_DICE: Dict[str, float] = {
     "01_dice_image_level":                  0.8426,
     "02_bce_image_level":                   0.8485,
@@ -72,11 +76,6 @@ REFERENCE_DICE: Dict[str, float] = {
     "06_clahe_dicebce_image_level":         0.8501,
     "07_unetpp_effb4_dicebce_image_level":  0.8608,
 }
-
-
-def get_reference_dice(experiment_name: str) -> Optional[float]:
-    """Return the §13 reference Dice for `experiment_name`, or None if unknown."""
-    return REFERENCE_DICE.get(experiment_name)
 
 
 # --------------------------------------------------------------------------- #
@@ -284,7 +283,7 @@ def aggregate_cv_results(
 
     # Enhancement B's delta_vs_reference
     if reference_dice is None:
-        reference_dice = get_reference_dice(experiment_name)
+        reference_dice = REFERENCE_DICE.get(experiment_name)
     summary["reference_dice"]     = reference_dice
     summary["delta_vs_reference"] = (
         summary["dice_micro_mean"] - float(reference_dice)
