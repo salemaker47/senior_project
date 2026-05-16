@@ -32,18 +32,14 @@ Public API:
 Column convention
 -----------------
 fold_overall columns (one value per fold):
-    dice_macro, dice_micro
-    iou_macro,  iou_micro
-    sensitivity_macro, sensitivity_micro
-    precision_macro,   precision_micro
-    pred_area_ratio_macro, gt_area_ratio_macro, area_delta_macro
+    dice_micro, iou_micro, sensitivity_micro, precision_micro
     total_tp, total_fp, total_fn, total_tn, total_pixels
     n_images
 
 cv_summary columns (one row, across folds):
     For each metric `m` above:  `m_mean`, `m_std`   (cross-fold)
     Plus: experiment_name, dataset, split_scheme, n_folds, n_test_images_total,
-          report_dice_micro, report_dice_macro, report_iou_micro, report_iou_macro,
+          report_dice_micro, report_iou_micro,
           delta_vs_reference   (if a reference value is found / supplied),
           repro_metadata_json  (if supplied).
 """
@@ -124,31 +120,16 @@ def _fold_overall_row(
     micro_prec = (tp + 1.0) / (tp + fp + 1.0)
 
     return {
-        "n_images": n,
-
-        "dice_macro":         float(sub["dice"].mean()),
-        "dice_macro_std":     float(sub["dice"].std(ddof=0)),
+        "n_images":           n,
         "dice_micro":         micro_dice_from_counts(tp, fp, fn),
-
-        "iou_macro":          float(sub["iou"].mean()),
-        "iou_macro_std":      float(sub["iou"].std(ddof=0)),
         "iou_micro":          micro_iou_from_counts(tp, fp, fn),
-
-        "sensitivity_macro":  float(sub["sensitivity"].mean()),
         "sensitivity_micro":  float(micro_sens),
-
-        "precision_macro":    float(sub["precision"].mean()),
         "precision_micro":    float(micro_prec),
-
-        "pred_area_ratio_macro": float(sub["pred_mask_area_ratio"].mean()),
-        "gt_area_ratio_macro":   float(sub["gt_mask_area_ratio"].mean()),
-        "area_delta_macro":      float(sub["area_ratio_delta"].mean()),
-
-        "total_tp":     tp,
-        "total_fp":     fp,
-        "total_fn":     fn,
-        "total_tn":     tn,
-        "total_pixels": int(n_total_pixels),
+        "total_tp":           tp,
+        "total_fp":           fp,
+        "total_fn":           fn,
+        "total_tn":           tn,
+        "total_pixels":       int(n_total_pixels),
     }
 
 
@@ -220,11 +201,10 @@ def summarize_fold_results(
 # Cross-fold aggregation (with Enhancement B)
 # --------------------------------------------------------------------------- #
 _HEADLINE_METRICS: List[str] = [
-    "dice_macro", "dice_micro",
-    "iou_macro",  "iou_micro",
-    "sensitivity_macro", "sensitivity_micro",
-    "precision_macro",   "precision_micro",
-    "pred_area_ratio_macro", "gt_area_ratio_macro", "area_delta_macro",
+    "dice_micro",
+    "iou_micro",
+    "sensitivity_micro",
+    "precision_micro",
 ]
 
 
@@ -252,8 +232,8 @@ def aggregate_cv_results(
         cv_per_image        -- concat of all per_image tables (~3,064 rows)
 
     `reference_dice` lets the caller force a comparison value. If None, the
-    function looks it up via get_reference_dice(experiment_name). Set
-    explicitly to a value (or to nan) to override.
+    function looks it up from REFERENCE_DICE. Set explicitly to a value
+    (or to nan) to override.
     """
     if not fold_summaries:
         raise ValueError("aggregate_cv_results requires at least one fold summary")
@@ -275,8 +255,8 @@ def aggregate_cv_results(
         summary[f"{m}_mean"] = float(vals.mean())
         summary[f"{m}_std"]  = float(vals.std(ddof=1)) if len(vals) > 1 else 0.0
 
-    # Pretty report strings for the four headline numbers people quote
-    for m in ("dice_micro", "dice_macro", "iou_micro", "iou_macro"):
+    # Pretty report strings for the two headline numbers people quote
+    for m in ("dice_micro", "iou_micro"):
         summary[f"report_{m}"] = (
             f"{summary[f'{m}_mean']:.4f} ± {summary[f'{m}_std']:.4f}"
         )
