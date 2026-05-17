@@ -1,0 +1,746 @@
+\documentclass[a4paper,12pt]{article}
+
+%% ── All standard packages available on Overleaf ──────────────────────────────
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{a4paper, top=2.5cm, bottom=2.5cm, left=3cm, right=2.5cm}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{makecell}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+\addbibresource{sample.bib}
+
+%% ── Page style ───────────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\nouppercase{\leftmark}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{15pt}
+
+%% ── Custom list environments (symbols and abbreviations) ─────────────────────
+\newenvironment{symbols}{%
+  \begin{list}{}{%
+    \setlength{\labelwidth}{3.8cm}%
+    \setlength{\leftmargin}{4.4cm}%
+    \setlength{\labelsep}{0.5cm}%
+    \setlength{\itemsep}{3pt}%
+    \renewcommand{\makelabel}[1]{##1\hfil}%
+  }%
+}{%
+  \end{list}%
+}
+
+\newenvironment{abbrv}{%
+  \begin{list}{}{%
+    \setlength{\labelwidth}{2.5cm}%
+    \setlength{\leftmargin}{3.2cm}%
+    \setlength{\labelsep}{0.5cm}%
+    \setlength{\itemsep}{3pt}%
+    \renewcommand{\makelabel}[1]{\textbf{##1}\hfil}%
+  }%
+}{%
+  \end{list}%
+}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+%% ── TITLE PAGE ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+  {\large\bfseries International Burch University\\[0.3cm]}
+  {\large Faculty of Engineering\\[0.1cm]}
+  {\large Department of Computer Engineering\\[2.5cm]}
+
+  \rule{\linewidth}{1.2pt}\\[0.5cm]
+  {\LARGE\bfseries Brain Tumor Segmentation\\[0.3cm]
+  Using Deep Learning\\[0.5cm]}
+  \rule{\linewidth}{1.2pt}\\[1.5cm]
+
+  {\large Bachelor of Science Thesis\\[2.5cm]}
+
+  \begin{tabular}{@{}ll@{}}
+    \textbf{Authors:}    & Salem R S Aker \quad 122200157 \\[0.2cm]
+                         & Tarek ALibrahim \quad 122200002 \\[0.2cm]
+                         & Faysal Dabbagh \quad 122200015 \\[1cm]
+    \textbf{Supervisor:} & Elena Battini Sönmez \\
+  \end{tabular}
+
+  \vfill
+  {\large \today}
+\end{titlepage}
+
+%% ── ABSTRACT ─────────────────────────────────────────────────────────────────
+\newpage
+\thispagestyle{plain}
+\addcontentsline{toc}{section}{Abstract}
+\section*{Abstract}
+\noindent
+Brain tumor segmentation in magnetic resonance imaging (MRI) is an important task for supporting
+clinical diagnosis, treatment planning, and tumor monitoring. In this study, a deep learning-based
+brain tumor segmentation pipeline is developed and evaluated using the Figshare Brain Tumor Dataset,
+which contains 3,064 T1-weighted contrast-enhanced MRI images and corresponding binary tumor masks
+collected from 233 patients. The pipeline extracts image--mask pairs from \texttt{.mat} files,
+resizes each image to $256 \times 256$ pixels, applies normalization and data augmentation, and
+evaluates model performance through five-fold cross-validation using an image-level splitting
+strategy. Three experimental configurations are compared: a U-Net model with a ResNet-34 encoder
+trained using a combined Dice and Binary Cross-Entropy (DiceBCE) loss function, a U-Net model
+with the same loss function but with Contrast Limited Adaptive Histogram Equalization (CLAHE)
+applied during preprocessing, and a U-Net++ model with an EfficientNet-B4 encoder trained with the
+DiceBCE loss function. All models share the same optimizer, scheduler, and training protocol,
+ensuring a controlled comparison across configurations. Performance is measured using the Dice
+Similarity Coefficient and Intersection-over-Union. Preliminary results from the U-Net++
+EfficientNet-B4 configuration on fold~1 indicate a test Dice of 0.8706, which exceeds the
+five-fold reference benchmark of 0.8608 reported for this architecture, suggesting the pipeline
+is correctly implemented. Full cross-validation results for all three configurations are pending.
+
+%% ── TABLE OF CONTENTS ────────────────────────────────────────────────────────
+\newpage
+\addcontentsline{toc}{section}{Contents}
+\tableofcontents
+
+\newpage
+\addcontentsline{toc}{section}{List of Figures}
+\listoffigures
+
+\newpage
+\addcontentsline{toc}{section}{List of Tables}
+\listoftables
+
+%% ── LIST OF SYMBOLS ──────────────────────────────────────────────────────────
+\newpage
+\addcontentsline{toc}{section}{List of Symbols}
+\section*{List of Symbols}
+\begin{symbols}
+    \item[$I(x,y)$]               Intensity value of an MRI image at pixel location $(x,y)$
+    \item[$P$]                    Predicted binary tumor segmentation mask
+    \item[$G$]                    Ground-truth binary tumor segmentation mask
+    \item[$P \cap G$]             Overlapping region between the predicted mask and the ground-truth mask
+    \item[$P \cup G$]             Union region between the predicted mask and the ground-truth mask
+    \item[$S_e$]                  Feature map extracted from the encoder path of the segmentation model
+    \item[$S_d$]                  Feature map reconstructed in the decoder path of the segmentation model
+    \item[$S_C$]                  Concatenated feature map formed using skip connections
+    \item[$p(x,y)$]               Predicted tumor probability at pixel location $(x,y)$
+    \item[$\mathcal{L}_{Dice}$]   Dice loss function
+    \item[$\mathcal{L}_{BCE}$]    Binary cross-entropy loss function
+    \item[$\mathcal{L}_{DiceBCE}$] Combined Dice and binary cross-entropy loss function
+    \item[$DSC$]                  Dice Similarity Coefficient
+    \item[$IoU$]                  Intersection-over-Union
+\end{symbols}
+
+%% ── LIST OF ABBREVIATIONS ────────────────────────────────────────────────────
+\newpage
+\addcontentsline{toc}{section}{List of Abbreviations}
+\section*{List of Abbreviations}
+\begin{abbrv}
+    \item[CT]      Computed Tomography
+    \item[MRI]     Magnetic Resonance Imaging
+    \item[CNN]     Convolutional Neural Network
+    \item[U-Net]   U-shaped Encoder--Decoder Convolutional Neural Network
+    \item[U-Net++] Nested U-Net Architecture
+    \item[CLAHE]   Contrast Limited Adaptive Histogram Equalization
+    \item[BCE]     Binary Cross-Entropy
+    \item[DSC]     Dice Similarity Coefficient
+    \item[IoU]     Intersection-over-Union
+    \item[GPU]     Graphics Processing Unit
+    \item[PET]     Positron Emission Tomography
+    \item[SMP]     Segmentation Models PyTorch
+\end{abbrv}
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+%% ─────────────────────────────────────────────────────────────────────────────
+%% SECTIONS
+%% ─────────────────────────────────────────────────────────────────────────────
+
+\section{Introduction}
+\label{sec:introduction}
+
+The brain is the central organ responsible for controlling and regulating essential bodily
+functions, including cognition, motor control, and sensory processing. The abnormal and
+uncontrolled proliferation of cells within brain tissue leads to the formation of brain tumors,
+which can significantly impair neurological function and pose serious health risks
+\cite{louis2021who}. Brain tumors are broadly classified into benign and malignant types based
+on their growth behavior, invasiveness, and histopathological characteristics. Benign tumors
+typically exhibit slow growth and well-defined boundaries, whereas malignant tumors demonstrate
+rapid proliferation, infiltrative growth, and aggressive invasion of surrounding healthy tissue
+\cite{who2021tumors}.
+
+Among malignant brain tumors, gliomas represent one of the most common and deadliest categories,
+originating from glial cells within the central nervous system. High-grade gliomas, particularly
+glioblastoma, are characterized by rapid progression, extensive infiltration, and resistance to
+treatment, leading to a poor prognosis. Despite advances in surgery, radiotherapy, and
+chemotherapy, the median survival time for patients diagnosed with high-grade gliomas remains
+approximately 12--24 months \cite{ostrom2020cbtrus,louis2021who}.
+
+Medical imaging plays a critical role in the diagnosis, treatment planning, and follow-up of
+brain tumors. Among available imaging modalities, Magnetic Resonance Imaging (MRI) is the
+primary tool used in clinical practice due to its superior soft-tissue contrast and absence of
+ionizing radiation \cite{shukla2017advanced}. MRI enables the visualization of tumor
+sub-regions, such as the enhancing core, necrotic tissue, and surrounding edema, which are
+essential for accurate diagnosis and therapeutic decision-making.
+
+However, precise delineation of tumor boundaries from MRI scans is typically performed manually
+by medical experts, making the process time-consuming, labor-intensive, and subject to
+inter-observer variability \cite{amin2025dual}. Automated brain tumor segmentation remains
+computationally challenging due to several intrinsic factors, including irregular tumor shapes,
+fuzzy growth patterns, image noise artifacts, partial volume effects, and severe class imbalance
+between tumor pixels and healthy tissue \cite{tohka2014partial}.
+
+To address these challenges, recent research has focused on developing deep learning systems for
+automated tumor segmentation. Among these methods, encoder--decoder architectures have become
+widely adopted in medical image segmentation because they can learn high-level visual features
+while preserving spatial details through skip connections. U-Net-based models are especially
+suitable for this task because they produce pixel-wise predictions and can be trained directly
+using paired MRI images and ground-truth tumor masks.
+
+This project develops and evaluates an independent segmentation pipeline using the Figshare Brain
+Tumor Dataset. Three experimental configurations are compared to assess how preprocessing,
+architecture, and loss function selection affect binary brain tumor segmentation performance:
+a baseline U-Net model trained with DiceBCE loss, a CLAHE-enhanced U-Net model trained with
+DiceBCE loss, and a U-Net++ model with an EfficientNet-B4 encoder trained with DiceBCE loss.
+
+The remainder of this thesis is organized as follows. Section~\ref{sec:related_works} reviews
+existing studies on brain tumor segmentation. Section~\ref{sec:methodology} describes the
+dataset, preprocessing steps, and segmentation models. Section~\ref{sec:Experiments} presents
+the experimental setup and five-fold cross-validation strategy.
+Section~\ref{EvaluationMetrics} defines the evaluation metrics. Section~\ref{sec:results}
+presents and discusses the experimental results, and Section~\ref{sec:conclusion} concludes
+the study.
+
+
+\section{Related Work}
+\label{sec:related_works}
+
+Brain tumor segmentation has been extensively studied, with earlier methods relying on
+traditional machine learning and clustering techniques while more recent approaches leverage
+deep learning architectures. A comparison of representative methods, organized by algorithm,
+dataset, and reported Dice performance, is presented in Table~\ref{tab:related_works_comparison}.
+
+Zhang et al.\ \cite{zhang2019brain} employed a hybrid clustering approach based on K-means,
+achieving a Dice score of approximately 85\% on a private MRI dataset. As deep learning gained
+prominence, Saouli et al.\ \cite{saouli2018fully} employed an Incremental Deep Neural Network
+on the BRATS dataset, improving performance to 88.6\%.
+
+Significant advances were made by Kamnitsas et al.\ \cite{kamnitsas2017efficient} with the 3D
+CNN (DeepMedic) architecture, which effectively captures volumetric context and yields a Dice
+score of 90.1\%. Building on the U-Net architecture, Allah et al.\ \cite{allah2023edge} proposed
+the Edge U-Net, achieving 91.3\%, while Ruba et al.\ \cite{ruba2023brain} introduced the
+JGate-AttResU-Net, pushing accuracy to 92.1\%.
+
+These results demonstrate that improvements in network architecture, preprocessing, and loss
+function design can produce consistent gains in segmentation accuracy. Based on this direction,
+the current study develops an independent U-Net-based segmentation pipeline that compares a
+baseline DiceBCE configuration, a CLAHE-enhanced DiceBCE configuration, and a U-Net++ model
+with an EfficientNet-B4 encoder on the Figshare Brain Tumor Dataset.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Comparison of existing brain tumor segmentation methods and the current project approach.}
+    \label{tab:related_works_comparison}
+    \renewcommand{\arraystretch}{1.3}
+    \resizebox{\textwidth}{!}{
+        \begin{tabular}{|l|l|l|l|}
+        \hline
+        \textbf{Paper / Study} & \textbf{Algorithm} & \textbf{Dataset} & \textbf{Performance} \\ \hline
+
+        Zhang et al.\ (2019) \cite{zhang2019brain}
+        & \makecell{Hybrid Clustering \\ (K-means)}
+        & \makecell{Private MRI \\ Dataset}
+        & Dice: $\sim$85\% \\ \hline
+
+        Saouli et al.\ (2018) \cite{saouli2018fully}
+        & \makecell{Incremental \\ DNN}
+        & \makecell{BRATS \\ Dataset}
+        & Dice: 88.6\% \\ \hline
+
+        Kamnitsas et al.\ (2017) \cite{kamnitsas2017efficient}
+        & \makecell{3D CNN \\ (DeepMedic)}
+        & \makecell{BRATS \\ Dataset}
+        & Dice: 90.1\% \\ \hline
+
+        Allah et al.\ (2023) \cite{allah2023edge}
+        & Edge U-Net
+        & \makecell{BRATS \\ Dataset}
+        & Dice: 91.3\% \\ \hline
+
+        Ruba et al.\ (2023) \cite{ruba2023brain}
+        & JGate-AttResU-Net
+        & \makecell{BRATS \\ Dataset}
+        & Dice: 92.1\% \\ \hline
+
+        Current Study
+        & \makecell{U-Net (ResNet-34), \\ CLAHE U-Net, \\ U-Net++ (EfficientNet-B4)}
+        & \makecell{Figshare Brain \\ Tumor Dataset}
+        & \makecell{Five-fold \\ cross-validation \\ (in progress)} \\ \hline
+
+        \end{tabular}
+    }
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]{u-net-architecture.png}
+    \caption{Overview of the U-Net architecture commonly used for biomedical image segmentation \cite{ronneberger2015unet}.}
+    \label{fig:unet_architecture}
+\end{figure}
+
+
+\newpage
+
+\section{Methodology}
+\label{sec:methodology}
+
+This section describes the dataset, preprocessing steps, segmentation models, training strategy,
+and evaluation protocol used in this study. The project develops an independent deep learning
+pipeline for binary brain tumor segmentation using the Figshare Brain Tumor Dataset. The primary
+objective is to compare three U-Net-based segmentation configurations under a controlled
+five-fold cross-validation setup.
+
+The proposed workflow begins by extracting MRI images and tumor masks from the original
+\texttt{.mat} files. The extracted image--mask pairs are resized, normalized, optionally
+contrast-enhanced, augmented during training, and used to train segmentation models. The three
+evaluated configurations are DiceBCE (U-Net), CLAHE DiceBCE (U-Net), and U-Net++ EfficientNet-B4
+DiceBCE.
+
+
+\subsection{Dataset}
+\label{sub:dataset}
+
+This study uses the Figshare Brain Tumor Dataset \cite{cheng2017figshare}, a publicly available
+MRI dataset prepared for brain tumor analysis. The dataset contains 3,064 T1-weighted
+contrast-enhanced MRI images collected from 233 patients. The data are provided in
+\texttt{.mat} file format, where each file includes the MRI image, the corresponding binary tumor
+mask, tumor class label, and patient identifier.
+
+The task is formulated as binary semantic segmentation: each pixel is classified as either tumor
+(foreground) or background. Although the dataset contains three tumor categories---meningioma,
+glioma, and pituitary tumor---tumor type classification is outside the scope of this study.
+
+The original \texttt{.mat} files are converted into paired image--mask samples. Each MRI image
+is converted from grayscale to three-channel format to match the input requirements of
+ImageNet-pretrained encoder weights. All images and masks are resized to $256 \times 256$ pixels.
+Pixel intensity values are normalized using ImageNet mean and standard deviation statistics, and
+tumor masks are converted into binary format (foreground = 1, background = 0) before training.
+
+Data augmentation is applied during training to improve model generalization and reduce overfitting.
+The augmentation strategy includes geometric and intensity-based transformations such as horizontal
+and vertical flipping, rotation, brightness and contrast adjustment, elastic distortion, grid
+distortion, optical distortion, coarse dropout, and Gaussian noise addition. In the CLAHE-based
+experiment, Contrast Limited Adaptive Histogram Equalization is applied to the MRI images during
+preprocessing to enhance local contrast before augmentation and normalization.
+
+\begin{table}[h]
+    \centering
+    \caption{Summary of the dataset used in this study.}
+    \label{tab:dataset_summary}
+    \renewcommand{\arraystretch}{1.5}
+    \begin{tabular}{|l|l|l|l|}
+        \hline
+        \textbf{Dataset} & \textbf{Samples} & \textbf{Input Format} & \textbf{Task} \\ \hline
+
+        \makecell{Figshare Brain \\ Tumor Dataset \cite{cheng2017figshare}}
+        & \makecell{3,064 MRI images \\ from 233 patients}
+        & \makecell{\texttt{.mat} files converted \\ into image--mask pairs}
+        & \makecell{Binary tumor \\ segmentation} \\ \hline
+    \end{tabular}
+\end{table}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.45\textwidth]{Figshare.png}
+    \caption{Example MRI slice from the Figshare Brain Tumor Dataset used for binary tumor segmentation.}
+    \label{fig:dataset_examples}
+\end{figure}
+
+
+\subsection{Algorithms}
+\label{sub:algorithms}
+
+This study implements and compares three deep learning configurations for binary brain tumor
+segmentation. All experiments are based on semantic segmentation, where each pixel is classified
+as either tumor or background. The three experimental configurations are:
+
+\begin{itemize}
+    \item \textbf{DiceBCE:} A U-Net model with a ResNet-34 encoder pre-trained on ImageNet,
+          trained using a combined Dice and Binary Cross-Entropy loss function with equal
+          weighting between the two loss terms.
+
+    \item \textbf{CLAHE DiceBCE:} A U-Net model with the same ResNet-34 encoder and DiceBCE
+          loss function, but with Contrast Limited Adaptive Histogram Equalization (CLAHE) applied
+          during preprocessing to enhance local image contrast before training.
+
+    \item \textbf{U-Net++ EfficientNet-B4 DiceBCE:} A U-Net++ model with an EfficientNet-B4
+          encoder pre-trained on ImageNet, trained with the DiceBCE loss function. The batch
+          size is reduced from 8 to 6 to accommodate the larger model's GPU memory requirements.
+\end{itemize}
+
+
+\subsubsection{U-Net Architecture}
+\label{sub:unet_architecture}
+
+U-Net is an encoder--decoder convolutional neural network architecture widely used for biomedical
+image segmentation \cite{ronneberger2015unet}. The encoder path extracts hierarchical image
+features by applying convolutional operations and progressive downsampling, while the decoder path
+reconstructs the spatial resolution to produce a pixel-wise segmentation mask. Skip connections
+between corresponding encoder and decoder levels preserve spatial details that may be lost during
+downsampling.
+
+In the DiceBCE and CLAHE DiceBCE configurations, the U-Net model uses a ResNet-34 encoder
+pre-trained on ImageNet as the feature extraction backbone. The decoder produces a single-channel
+output of the same spatial resolution as the input, and a sigmoid activation is applied at
+inference time to produce a tumor probability map. The binary mask is obtained by thresholding
+at 0.5.
+
+
+\subsubsection{CLAHE-Based Preprocessing}
+\label{sub:clahe_preprocessing}
+
+Contrast Limited Adaptive Histogram Equalization (CLAHE) is applied in the CLAHE DiceBCE
+configuration to enhance local contrast in MRI images before training. MRI scans may contain
+low-contrast regions where tumor boundaries are difficult to distinguish from surrounding tissue.
+CLAHE improves local intensity differences by performing histogram equalization on small,
+overlapping image tiles while limiting noise amplification through a user-defined contrast limit.
+
+The purpose of this experiment is to evaluate whether local contrast enhancement can improve
+segmentation performance compared with the baseline DiceBCE configuration. The model architecture,
+loss function, and all other training parameters remain identical between the two configurations,
+so that the effect of CLAHE preprocessing can be assessed in isolation.
+
+
+\subsubsection{U-Net++ with EfficientNet-B4 Encoder}
+\label{sub:unetpp_effb4}
+
+U-Net++ is an extension of the original U-Net architecture that redesigns the skip connections
+using nested and densely connected convolutional pathways \cite{zhou2019unetpp}. This structure
+reduces the semantic gap between encoder and decoder feature maps by inserting intermediate
+nodes along the skip paths, enabling the model to combine multi-scale features more effectively
+than standard skip connections.
+
+In the third configuration, U-Net++ is combined with an EfficientNet-B4 encoder pre-trained on
+ImageNet. EfficientNet-B4 employs compound scaling to balance network depth, width, and
+resolution, providing richer feature representations than a ResNet-34 encoder. This configuration
+is evaluated to determine whether the stronger encoder and nested skip-connection structure of
+U-Net++ improves tumor segmentation performance relative to the baseline U-Net configurations.
+The batch size is reduced from 8 to 6 to accommodate the larger model within GPU memory.
+
+
+\subsubsection{Dice-BCE Loss Function}
+\label{sub:dice_bce_loss}
+
+All three configurations are trained using a combined Dice and Binary Cross-Entropy loss
+function with equal weights. Binary Cross-Entropy supports pixel-wise classification between
+tumor and background, while Dice loss directly optimizes the spatial overlap between the
+predicted mask and the ground-truth mask. This combination is particularly appropriate for
+medical segmentation tasks because tumor pixels typically occupy a much smaller area than the
+background, making purely pixel-wise loss functions susceptible to class imbalance.
+
+The combined loss function is defined as:
+
+\begin{equation}
+    \mathcal{L}_{DiceBCE} = \mathcal{L}_{Dice} + \mathcal{L}_{BCE}
+\end{equation}
+
+where $\mathcal{L}_{Dice}$ is the Dice loss and $\mathcal{L}_{BCE}$ is the Binary Cross-Entropy
+loss. By combining both terms with equal weight, the model is encouraged to produce accurate
+pixel-level classification while also maximizing the spatial overlap between the predicted and
+ground-truth tumor regions.
+
+
+\section{Experimental Setup}
+\label{sec:Experiments}
+
+This section describes the experimental setup used to train and evaluate the three segmentation
+configurations. All experiments are conducted on the Figshare Brain Tumor Dataset using the
+same data preparation procedure, image resolution, loss function, and evaluation protocol to
+ensure a fair and controlled comparison.
+
+The original MRI images and tumor masks are extracted from the dataset's \texttt{.mat} files
+and converted into paired image--mask samples. Each image and its corresponding mask are resized
+to $256 \times 256$ pixels. Grayscale MRI images are converted to three-channel format to match
+the input requirements of the ImageNet-pretrained encoders. Intensity values are normalized
+using ImageNet statistics, and the tumor masks are binarized before training.
+
+Instead of using a single fixed train-test split, five-fold cross-validation is applied using
+an image-level KFold splitting strategy. The dataset is divided into five folds of approximately
+equal size. During each run, four folds are used for training (with a 15\% validation subset
+drawn from the training pool) and one fold is reserved for testing. This process is repeated
+five times so that each fold serves once as the test set. The final performance is reported as
+the mean and standard deviation of the metric across the five test folds. The image-level
+splitting strategy follows the same protocol used in the publicly available reference benchmark
+for this dataset, enabling direct comparison of results.
+
+
+\subsection{Experimental Configurations}
+\label{sub:experimental_configurations}
+
+Three experimental configurations are evaluated in this study:
+
+\begin{itemize}
+    \item \textbf{DiceBCE:} A U-Net model with a ResNet-34 encoder trained with the combined
+          Dice-BCE loss function using equal loss weights. This configuration serves as the
+          baseline for evaluating segmentation performance without additional preprocessing.
+
+    \item \textbf{CLAHE DiceBCE:} A U-Net model with the same ResNet-34 encoder and Dice-BCE
+          loss function, but with CLAHE applied to MRI images during preprocessing. This
+          experiment tests whether local contrast enhancement improves segmentation accuracy.
+
+    \item \textbf{U-Net++ EfficientNet-B4 DiceBCE:} A U-Net++ model with an EfficientNet-B4
+          encoder trained with the Dice-BCE loss function. This configuration evaluates the
+          benefit of using a stronger encoder and a more expressive skip-connection structure
+          for brain tumor segmentation.
+\end{itemize}
+
+
+\subsection{Training Parameters}
+\label{sub:training_parameters}
+
+All models are trained from image--mask pairs using the training parameters summarized in
+Table~\ref{tab:training_params}. The Adam optimizer is used with an initial learning rate of
+$10^{-4}$. The learning rate is reduced during training using a ReduceLROnPlateau scheduler,
+which decreases the learning rate by a factor of 0.1 when the validation loss does not improve
+for five consecutive epochs, with a minimum learning rate of $10^{-7}$. Training is stopped
+early if the validation Dice score does not improve for 15 consecutive epochs. The best
+checkpoint across all epochs is selected based on the highest validation Dice score.
+
+Data augmentation is applied during training to improve generalization and reduce overfitting.
+The augmentation strategy includes horizontal and vertical flipping, random rotation, brightness
+and contrast variation, elastic transformation, grid distortion, optical distortion, coarse
+dropout, and Gaussian noise. A fixed random seed of 42 is used across all experiments to ensure
+reproducibility.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Training hyperparameters shared across all experimental configurations.}
+    \label{tab:training_params}
+    \renewcommand{\arraystretch}{1.3}
+    \begin{tabular}{|l|l|}
+        \hline
+        \textbf{Hyperparameter} & \textbf{Value} \\ \hline
+        Image size               & $256 \times 256$ \\ \hline
+        Batch size               & 8 (6 for U-Net++ EfficientNet-B4) \\ \hline
+        Optimizer                & Adam \\ \hline
+        Initial learning rate    & $10^{-4}$ \\ \hline
+        LR scheduler             & ReduceLROnPlateau \\ \hline
+        Scheduler factor         & 0.1 \\ \hline
+        Scheduler patience       & 5 epochs (monitor: validation loss) \\ \hline
+        Minimum learning rate    & $10^{-7}$ \\ \hline
+        Maximum epochs           & 100 \\ \hline
+        Early stopping patience  & 15 epochs (monitor: validation Dice) \\ \hline
+        Segmentation threshold   & 0.5 \\ \hline
+        Random seed              & 42 \\ \hline
+        Encoder weights          & ImageNet pre-trained \\ \hline
+    \end{tabular}
+\end{table}
+
+
+\section{Evaluation Metrics}
+\label{EvaluationMetrics}
+
+The performance of the segmentation models is evaluated by comparing the predicted tumor masks
+with the corresponding ground-truth masks. Since the task is binary tumor segmentation, each
+pixel is classified as either tumor or background. The two primary evaluation metrics used in
+this study are the Dice Similarity Coefficient (DSC) and the Intersection-over-Union (IoU).
+
+The Dice Similarity Coefficient is defined as:
+
+\begin{equation}
+    DSC = \frac{2 |P \cap G|}{|P| + |G|}
+\end{equation}
+
+where $P$ is the predicted tumor mask and $G$ is the ground-truth tumor mask.
+The term $|P \cap G|$ represents the overlapping region between the predicted and actual tumor
+areas. A Dice score close to 1 indicates strong spatial overlap and accurate segmentation, while
+a score close to 0 indicates poor agreement with the ground truth.
+
+The Intersection-over-Union is defined as:
+
+\begin{equation}
+    IoU = \frac{|P \cap G|}{|P \cup G|}
+\end{equation}
+
+where $|P \cup G|$ is the union of the predicted and ground-truth masks. IoU provides a
+stricter measure of segmentation quality than DSC because the union penalizes false positives
+and false negatives more strongly.
+
+Both metrics are computed using globally pooled pixel counts across all images in a test fold
+(micro-averaged reduction). This pooling strategy avoids the instability of averaging per-image
+scores when the ground-truth mask is very small, which can occur for slices that contain only a
+few tumor pixels.
+
+In addition to evaluation, the training process uses the combined Dice and Binary Cross-Entropy
+loss function defined as:
+
+\begin{equation}
+    \mathcal{L}_{DiceBCE} = \mathcal{L}_{Dice} + \mathcal{L}_{BCE}
+\end{equation}
+
+This combined loss is suitable for brain tumor segmentation because tumor regions typically
+occupy a small fraction of the total image area. Optimizing only pixel-wise accuracy would
+be misleading in the presence of such class imbalance, whereas Dice-based optimization
+directly targets segmentation overlap.
+
+
+\section{Results \& Discussion}
+\label{sec:results}
+
+This section presents the experimental results obtained from the five-fold cross-validation
+evaluation on the Figshare Brain Tumor Dataset. Three configurations are evaluated: DiceBCE,
+CLAHE DiceBCE, and U-Net++ EfficientNet-B4 DiceBCE. Performance is measured using the Dice
+Similarity Coefficient and Intersection-over-Union (IoU). Evaluation is currently in progress;
+fold~1 results are available for the U-Net++ EfficientNet-B4 DiceBCE configuration, and the
+remaining folds and configurations will be completed and added as training runs finish.
+
+
+\subsection{Fold-wise Experimental Results}
+\label{sub:fold_results}
+
+Table~\ref{tab:fold_results} presents the fold-wise Dice and IoU results for the three
+experimental configurations. Each fold represents one test partition in the five-fold
+cross-validation process. Cells marked with `---' indicate that the corresponding training run
+has not yet completed.
+
+\begin{table}[htbp]
+\centering
+\caption{Fold-wise Dice and IoU results for the evaluated segmentation configurations.}
+\label{tab:fold_results}
+\renewcommand{\arraystretch}{1.3}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{|c|cc|cc|cc|}
+\hline
+\textbf{Fold}
+& \multicolumn{2}{c|}{\textbf{DiceBCE}}
+& \multicolumn{2}{c|}{\textbf{CLAHE DiceBCE}}
+& \multicolumn{2}{c|}{\textbf{U-Net++ EfficientNet-B4 DiceBCE}} \\ \hline
+
+& \textbf{Dice} & \textbf{IoU}
+& \textbf{Dice} & \textbf{IoU}
+& \textbf{Dice} & \textbf{IoU} \\ \hline
+
+1 & --- & --- & --- & --- & 0.8706 & 0.7708 \\ \hline
+2 & --- & --- & --- & --- & ---    & ---    \\ \hline
+3 & --- & --- & --- & --- & ---    & ---    \\ \hline
+4 & --- & --- & --- & --- & ---    & ---    \\ \hline
+5 & --- & --- & --- & --- & ---    & ---    \\ \hline
+
+\end{tabular}
+}
+\end{table}
+
+
+\subsection{Average Performance Comparison}
+\label{sub:average_results}
+
+Table~\ref{tab:average_results} summarizes the mean Dice and IoU across the five folds for
+each configuration. Values will be populated as training completes for the remaining folds.
+
+\begin{table}[htbp]
+\centering
+\caption{Mean Dice and IoU performance across five folds (pending full evaluation).}
+\label{tab:average_results}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Configuration} & \textbf{Mean Dice} & \textbf{Mean IoU} \\ \hline
+
+DiceBCE                         & --- & --- \\ \hline
+CLAHE DiceBCE                   & --- & --- \\ \hline
+U-Net++ EfficientNet-B4 DiceBCE & --- & --- \\ \hline
+
+\end{tabular}
+\end{table}
+
+
+\subsection{Discussion}
+\label{sub:discussion}
+
+The only completed result currently available is fold~1 of the U-Net++ EfficientNet-B4 DiceBCE
+configuration, which achieved a test Dice of 0.8706 and a test IoU of 0.7708. This result
+exceeds the five-fold mean of 0.8608 reported in the public reference benchmark for the same
+architecture on the Figshare dataset, which is consistent with expected fold-level variance:
+individual folds will differ from the five-fold mean depending on the relative difficulty of
+each test partition.
+
+The training curve for fold~1 of the U-Net++ EfficientNet-B4 configuration shows a healthy
+learning progression. The validation Dice improved steadily from 0.732 at epoch~0 to a peak
+of approximately 0.863 before early stopping was triggered at epoch~61. The learning rate
+decayed appropriately through the ReduceLROnPlateau schedule, dropping from $10^{-4}$ to
+$10^{-5}$ at epoch~30, to $10^{-6}$ at epoch~51, and to $10^{-7}$ at epoch~57. This decay
+pattern is consistent with the model converging and the optimizer making progressively finer
+adjustments. These observations suggest that the training pipeline is correctly implemented.
+
+Results for folds~2--5 of the U-Net++ EfficientNet-B4 configuration and for all five folds of
+the DiceBCE and CLAHE DiceBCE configurations are pending. Once all evaluations are complete,
+the following comparisons will be of primary interest:
+
+\begin{itemize}
+    \item \textbf{DiceBCE vs.\ CLAHE DiceBCE}: Isolates the effect of CLAHE preprocessing on
+          segmentation accuracy when all other factors (architecture, loss function, training
+          protocol) are held constant.
+
+    \item \textbf{DiceBCE vs.\ U-Net++ EfficientNet-B4 DiceBCE}: Isolates the combined effect
+          of using a stronger encoder (EfficientNet-B4) and a more expressive skip-connection
+          structure (U-Net++) relative to the baseline U-Net with ResNet-34.
+
+    \item \textbf{CLAHE DiceBCE vs.\ U-Net++ EfficientNet-B4 DiceBCE}: Compares preprocessing-
+          based enhancement against architecture-based enhancement.
+\end{itemize}
+
+The preliminary fold~1 result for the U-Net++ EfficientNet-B4 configuration is encouraging and
+supports the hypothesis that a stronger encoder and nested skip connections can improve
+segmentation accuracy on the Figshare Brain Tumor Dataset. Full conclusions will be drawn once
+all five folds and all three configurations have been evaluated.
+
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This study presents a deep learning-based pipeline for binary brain tumor segmentation using the
+Figshare Brain Tumor Dataset. The pipeline converts the original \texttt{.mat} files into
+image--mask pairs, resizes all samples to $256 \times 256$ pixels, applies normalization and
+data augmentation, and evaluates model performance through five-fold cross-validation using an
+image-level splitting strategy. Three experimental configurations are compared: a baseline U-Net
+with a ResNet-34 encoder trained using the DiceBCE loss (DiceBCE), the same U-Net with CLAHE
+applied during preprocessing (CLAHE DiceBCE), and a U-Net++ model with an EfficientNet-B4
+encoder also trained with the DiceBCE loss (U-Net++ EfficientNet-B4 DiceBCE).
+
+All three configurations share the same optimizer (Adam, $lr = 10^{-4}$), learning rate
+schedule (ReduceLROnPlateau), early stopping criterion (patience of 15 epochs on validation
+Dice), and random seed (42), providing a controlled basis for comparison. Evaluation is
+currently in progress. Fold~1 results for the U-Net++ EfficientNet-B4 DiceBCE configuration
+show a test Dice of 0.8706 and a test IoU of 0.7708, which are consistent with and slightly
+above the reference benchmark of 0.8608 for this architecture. The training curve for this
+fold indicates healthy convergence behavior with appropriate learning rate decay, suggesting
+the pipeline is correctly implemented.
+
+The remaining four folds for the U-Net++ EfficientNet-B4 configuration and all five folds for
+the DiceBCE and CLAHE DiceBCE configurations are currently running. Once all evaluations are
+complete, the five-fold mean Dice and IoU for each configuration will be reported and used to
+draw conclusions regarding the relative impact of preprocessing (CLAHE), encoder strength
+(EfficientNet-B4 vs.\ ResNet-34), and skip-connection design (U-Net++ vs.\ U-Net) on
+segmentation performance.
+
+Future work may include extending the pipeline to multi-class tumor segmentation, testing on
+multi-modal datasets such as BraTS, exploring additional preprocessing strategies, and
+investigating more advanced architectures such as transformer-based segmentation models to
+further improve tumor boundary accuracy and generalization to unseen patients.
+
+
+%% ── BIBLIOGRAPHY ─────────────────────────────────────────────────────────────
+\clearpage
+\addcontentsline{toc}{section}{References}
+\printbibliography
+
+\end{document}
