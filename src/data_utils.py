@@ -127,17 +127,11 @@ def metadata_summary(df: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # Patient-level fold splitting (group + stratify by patient)
 # --------------------------------------------------------------------------- #
-try:
-    from sklearn.model_selection import StratifiedGroupKFold  # sklearn >= 1.0
-    _HAS_STRATIFIED_GROUP_KFOLD = True
-except ImportError:
-    StratifiedGroupKFold = None  # type: ignore[assignment]
-    _HAS_STRATIFIED_GROUP_KFOLD = False
-
 from sklearn.model_selection import (
     GroupKFold,
     GroupShuffleSplit,
     KFold,
+    StratifiedGroupKFold,
     train_test_split,
 )
 
@@ -177,7 +171,7 @@ def create_patient_folds(
     n_classes = len(np.unique(y))
 
     # ---- Multi-class -> StratifiedGroupKFold ----
-    if _HAS_STRATIFIED_GROUP_KFOLD and n_classes >= 2:
+    if n_classes >= 2:
         try:
             sgkf = StratifiedGroupKFold(
                 n_splits=n_splits, shuffle=True, random_state=random_state,

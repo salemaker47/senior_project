@@ -11,3 +11,4 @@ matplotlib
 scipy
 h5py
 kagglehub
+timm

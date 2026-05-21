@@ -22,7 +22,7 @@ Methodology: 5-fold cross-validation. Two split schemes:
 | dataset | status | size | classes | source |
 |---|---|---|---|---|
 | `figshare` | active | 3,064 images / 233 patients | meningioma, glioma, pituitary | KaggleHub `ashkhagan/figshare-brain-tumor-dataset` |
-| `brats2024` | planned | TBD | TBD | TBD |
+| `brats2020` | active | ~57k slices / 369 patients | glioma (segmentation only) | KaggleHub `awsaf49/brats2020-training-data` |
 
 Adding a new dataset means: dropping its raw files into `data/<dataset>/raw/`, running NB01 with `DATASET = "<dataset>"`, running NB02 to produce fold CSVs, and changing one knob in any training/testing notebook. No source-code edits required.
 
@@ -48,7 +48,7 @@ Senior_Project/
 │   │       │   ├── cv_fold_summary.csv
 │   │       │   └── folds/fold_X_{train,val,test}.csv
 │   │       └── image_level/  (same layout)
-│   └── brats2024/  (same layout when added)
+│   └── brats2020/  (same layout)
 ├── outputs/
 │   ├── checkpoints/<task>/<dataset>/<exp>/fold_X/{best.ckpt, best_model.pt, experiment_config.json}
 │   ├── logs/<task>/<dataset>/<exp>/fold_X/lightning_logs/version_0/metrics.csv
@@ -94,7 +94,7 @@ This is the canonical layout as it lives in Google Drive. See §11 for how it ma
 Three orthogonal axes define every artifact:
 
 - **task** — `segmentation` or `classification`. First segment under `outputs/<category>/`.
-- **dataset** — `figshare`, `brats2024`, etc. Second segment.
+- **dataset** — `figshare`, `brats2020`, etc. Second segment.
 - **experiment_name** — config-only identifier, e.g. `01_dice_image_level` or `cls01_resnet50`. No dataset suffix.
 
 Glob queries become natural:
@@ -116,14 +116,14 @@ Glob queries become natural:
 | 4a | `vis_utils.py` | shared | `show_class_examples` and generic image-display helpers used by NB01 |
 | 4b | `sg_vis_utils.py` | seg | `show_triplet`, `show_overlay_triplet`, `show_image_gt_pred_overlay` (4-panel) |
 | 5a | `data_utils.py` | shared | `load_metadata`, `validate_metadata`, `metadata_summary`, `create_patient_folds`, `create_image_level_folds`, `make_train_val_from_pool`, `make_train_val_image_level`, `verify_no_patient_leakage`, `save_fold_csvs` |
-| 5b | `sg_data_utils.py` | seg | `BrainTumorDataset`, `build_train_transform`, `build_eval_transform`, `build_dataloaders` |
+| 5b | `sg_data_utils.py` | seg | `BrainTumorDataset`, `build_train_transform`, `build_eval_transform`, `build_dataloaders`, `build_test_loader` |
 | 6a | `eval_utils.py` | shared | `build_fold_summary` |
-| 6b | `sg_eval_utils.py` | seg | `summarize_fold_results`, `aggregate_cv_results`, `micro_dice_from_counts` |
-| 7 | `sg_metrics.py` | seg | `dice_score`, `iou_score`, `get_smp_stats`, `get_metric_kind_pairs` |
+| 6b | `sg_eval_utils.py` | seg | `micro_dice_from_counts`, `micro_iou_from_counts`, `summarize_fold_results`, `aggregate_cv_results`, `aggregate_cv_per_patient`, `aggregate_cv_training_summary` |
+| 7 | `sg_metrics.py` | seg | `binarize_logits`, `dice_score`, `iou_score`, `get_smp_stats`, `micro_dice_from_stats`, `micro_iou_from_stats`, `get_metric_kind_pairs`, `compute_per_image_metrics_from_logits` |
 | 8 | `sg_losses.py` | seg | bce, dice, focal, lovasz, dice_bce, dice_focal, combo |
 | 9 | `sg_models.py` | seg | SMP-based registry: `smp_unet_resnet34`, `smp_unetpp_efficientnetb4`, etc. |
 | 10 | `optimizers.py` | shared | adam, adamw, sgd, rmsprop / reduce_on_plateau, cosine, cosine_warm_restarts, step, multistep, exponential, none |
-| 11 | `train_utils.py` | shared | `set_global_seed`, `build_callbacks`, `build_trainer`, `export_plain_state_dict` |
+| 11 | `train_utils.py` | shared | `set_global_seed`, `gather_repro_metadata`, `TrainingTimingCallback`, `EpochSummaryPrinter`, `build_callbacks`, `build_trainer`, `export_plain_state_dict`, `strip_model_prefix` |
 | 12 | `sg_lightning_module.py` | seg | `BrainTumorSegModule` |
 | 13 | `sg_test_utils.py` | seg | `load_model_from_pt`, `predict_mask`, `evaluate_fold` (writes prediction manifests) |
 | 14 | `cls_data_utils.py` | cls | `extract_patch`, `BrainTumorClsDataset`, cls transforms, `build_dataloaders_cls` |
@@ -134,7 +134,7 @@ Glob queries become natural:
 | 19 | `cls_test_utils.py` | cls | `load_cls_model_from_pt`, `predict_class`, `evaluate_fold_cls` (handles both `mask_source` modes) |
 | 20 | `cls_eval_utils.py` | cls | macro F1 cross-fold aggregation, `aggregate_cv_confusion` |
 
-23 files total: 7 shared, 9 seg-prefixed, 7 cls-prefixed.
+16 files implemented: 8 shared, 8 seg-prefixed. 7 cls-prefixed files (rows 14–20) are Phase 2 — not yet written.
 
 ---
 
@@ -230,7 +230,7 @@ EXPERIMENT = {
 
 ```python
 assert EXPERIMENT["task"] == "segmentation"      # or "classification" in NB07
-assert EXPERIMENT["dataset"] in ("figshare", "brats2024")
+assert EXPERIMENT["dataset"] in ("figshare", "brats2020")
 ```
 
 ---
@@ -513,18 +513,18 @@ Headline tables:
 
 ---
 
-## 15. Working agreement (for the rebuild)
+## 15. Working agreement (maintenance)
 
-The rewrite is happening one file at a time, in chat. Rules:
+The Phase 1 rebuild (shared + segmentation modules) is complete. All 16 `src/` files exist and are smoke-tested. The active work is Phase 2 (classification modules, rows 14–20 in §4) and finalising the report.
 
-1. Files are rewritten in dependency order (see §4 ordering column).
-2. Every rewrite is a **complete file**, not a diff. You paste the whole thing into the new empty target.
-3. Notebooks are rewritten cell-by-cell, every cell included even if textually unchanged from the original.
-4. A notebook isn't touched until every src file it imports has been rewritten.
-5. After each src file is rewritten, push it to GitHub and smoke-test it in Colab (`from src.<module> import *`) before requesting the next.
+Rules that carry forward:
 
-The phased rebuild plan from earlier is the macro-level schedule; this working agreement governs the per-file mechanics.
+1. Add new model/loss/aug variants as new registry branches — never modify existing ones.
+2. When editing an existing `src/` file: syntax-check locally (`python3 -m py_compile src/<file>.py`), push to GitHub, smoke-test in Colab before using in a run.
+3. When adding a cls `src/` file: follow dependency order (§4 ordering column); do not write a notebook that imports a file that doesn't exist yet.
+4. Notebook structural changes go through VS Code → GitHub → `git pull` in Colab. Runtime-only tweaks (EXPERIMENT dict knobs) stay in the Colab tab only.
+5. Update this file whenever a dataset is added, a module is promoted from "planned" to "active", or a path convention changes.
 
 ---
 
-This is the living instruction for the project. Update it whenever a structural decision changes (e.g., when `brats2024` is added, when a new task is introduced, when prediction manifests gain new fields). Keep it as `README.md` in the GitHub repo so future-you doesn't have to reconstruct the design from notebook cells.
+This is the living instruction for the project. Update it whenever a structural decision changes (e.g., when a new dataset is added, when Phase 2 classification modules land, when prediction manifest fields change). Keep this file in the GitHub repo so future-you doesn't have to reconstruct the design from notebook cells.

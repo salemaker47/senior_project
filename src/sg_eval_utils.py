@@ -65,6 +65,21 @@ def micro_iou_from_counts(tp: int, fp: int, fn: int, smooth: float = 1.0) -> flo
 
 
 # --------------------------------------------------------------------------- #
+# Internal helpers
+# --------------------------------------------------------------------------- #
+def _add_mean_std(
+    row: Dict[str, Any],
+    df: "pd.DataFrame",
+    metrics: "List[str]",
+) -> None:
+    """Add <metric>_mean and <metric>_std keys to `row` in-place."""
+    for m in metrics:
+        vals = df[m].astype(float)
+        row[f"{m}_mean"] = float(vals.mean())
+        row[f"{m}_std"]  = float(vals.std(ddof=1)) if len(vals) > 1 else 0.0
+
+
+# --------------------------------------------------------------------------- #
 # Internal: row builders
 # --------------------------------------------------------------------------- #
 _PER_IMAGE_METRIC_KEYS = (
@@ -76,7 +91,6 @@ _PER_IMAGE_METRIC_KEYS = (
 def _fold_overall_row(
     sub: pd.DataFrame,
     micro_counts: Dict[str, int],
-    n_total_pixels: Optional[int] = None,
 ) -> Dict[str, float]:
     """
     Build one fold_overall row (or one fold_by_class row) from a per-image
@@ -90,8 +104,7 @@ def _fold_overall_row(
     tn = int(micro_counts["tn"])
 
     n = int(len(sub))
-    if n_total_pixels is None:
-        n_total_pixels = int(sub["total_pixels"].sum()) if "total_pixels" in sub.columns else 0
+    n_total_pixels = int(sub["total_pixels"].sum()) if "total_pixels" in sub.columns else 0
 
     micro_sens = (tp + 1.0) / (tp + fn + 1.0)
     micro_prec = (tp + 1.0) / (tp + fp + 1.0)
@@ -220,10 +233,7 @@ def aggregate_cv_results(
         "n_folds":              int(cv_results["fold"].nunique()),
         "n_test_images_total":  int(cv_results["n_images"].sum()),
     }
-    for m in _HEADLINE_METRICS:
-        vals = cv_results[m].astype(float)
-        summary[f"{m}_mean"] = float(vals.mean())
-        summary[f"{m}_std"]  = float(vals.std(ddof=1)) if len(vals) > 1 else 0.0
+    _add_mean_std(summary, cv_results, _HEADLINE_METRICS)
 
     # Pretty report strings for the two headline numbers people quote
     for m in ("dice_micro", "iou_micro"):
@@ -254,10 +264,7 @@ def aggregate_cv_results(
             "n_folds":         int(sub["fold"].nunique()),
             "n_test_images_total": int(sub["n_images"].sum()),
         }
-        for m in _HEADLINE_METRICS:
-            vals = sub[m].astype(float)
-            row[f"{m}_mean"] = float(vals.mean())
-            row[f"{m}_std"]  = float(vals.std(ddof=1)) if len(vals) > 1 else 0.0
+        _add_mean_std(row, sub, _HEADLINE_METRICS)
         # The headline report string people will paste into the report:
         row["report_dice_micro"] = (
             f"{row['dice_micro_mean']:.4f} ± {row['dice_micro_std']:.4f}"
@@ -296,36 +303,24 @@ def aggregate_cv_per_patient(cv_per_image_df: pd.DataFrame) -> pd.DataFrame:
     if cv_per_image_df.empty:
         return pd.DataFrame()
 
-    rows = []
-    grouped = cv_per_image_df.groupby("patient_id", sort=True)
-    for pid, sub in grouped:
-        # Dominant class = most-common tumor_class for this patient
-        dom_class = (
-            sub["tumor_class"].mode().iloc[0]
-            if not sub["tumor_class"].mode().empty else ""
-        )
-        rows.append({
-            "patient_id":              pid,
-            "n_slices":                int(len(sub)),
-            "n_folds_appearing_in":    int(sub["fold"].nunique()),
-            "dominant_tumor_class":    dom_class,
-
-            "dice_mean":     float(sub["dice"].mean()),
-            "dice_median":   float(sub["dice"].median()),
-            "dice_min":      float(sub["dice"].min()),
-            "dice_max":      float(sub["dice"].max()),
-
-            "iou_mean":      float(sub["iou"].mean()),
-            "iou_median":    float(sub["iou"].median()),
-
-            "sensitivity_mean":    float(sub["sensitivity"].mean()),
-            "precision_mean":      float(sub["precision"].mean()),
-
-            "gt_area_ratio_mean":   float(sub["gt_mask_area_ratio"].mean()),
-            "pred_area_ratio_mean": float(sub["pred_mask_area_ratio"].mean()),
-            "area_delta_mean":      float(sub["area_ratio_delta"].mean()),
-        })
-    return pd.DataFrame(rows).sort_values("patient_id").reset_index(drop=True)
+    g = cv_per_image_df.groupby("patient_id", sort=True)
+    df = g.agg(
+        n_slices                = ("dice",               "count"),
+        n_folds_appearing_in    = ("fold",               "nunique"),
+        dominant_tumor_class    = ("tumor_class",        lambda x: x.mode().iloc[0] if len(x) else ""),
+        dice_mean               = ("dice",               "mean"),
+        dice_median             = ("dice",               "median"),
+        dice_min                = ("dice",               "min"),
+        dice_max                = ("dice",               "max"),
+        iou_mean                = ("iou",                "mean"),
+        iou_median              = ("iou",                "median"),
+        sensitivity_mean        = ("sensitivity",        "mean"),
+        precision_mean          = ("precision",          "mean"),
+        gt_area_ratio_mean      = ("gt_mask_area_ratio", "mean"),
+        pred_area_ratio_mean    = ("pred_mask_area_ratio","mean"),
+        area_delta_mean         = ("area_ratio_delta",   "mean"),
+    ).reset_index()
+    return df.sort_values("patient_id").reset_index(drop=True)
 
 
 # --------------------------------------------------------------------------- #

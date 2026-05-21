@@ -86,7 +86,7 @@ class BrainTumorSegModule(pl.LightningModule):
         self.metric_kind = metric_kind
         self._metric_pairs = get_metric_kind_pairs(metric_kind)
 
-        # Per-epoch buffers (concatenated in epoch_end hooks).
+        # Per-epoch stat buffers — flushed in _flush_epoch_buffers.
         self._val_tp:  list = []
         self._val_fp:  list = []
         self._val_fn:  list = []
@@ -133,23 +133,25 @@ class BrainTumorSegModule(pl.LightningModule):
         )
         return loss
 
+    def _flush_epoch_buffers(
+        self,
+        tp_buf: list, fp_buf: list, fn_buf: list, tn_buf: list,
+        log_prefix: str,
+    ) -> None:
+        tp = torch.cat(tp_buf); fp = torch.cat(fp_buf)
+        fn = torch.cat(fn_buf); tn = torch.cat(tn_buf)
+        for val_name, fn_ in self._metric_pairs.items():
+            name = val_name if log_prefix == "val_" else val_name.replace("val_", log_prefix)
+            on_bar = val_name in ("val_dice", "val_iou") and log_prefix == "val_"
+            self.log(name, fn_(tp, fp, fn, tn), prog_bar=on_bar)
+        tp_buf.clear(); fp_buf.clear(); fn_buf.clear(); tn_buf.clear()
+
     def on_validation_epoch_end(self):
         if not self._val_tp:
             return
-        tp = torch.cat(self._val_tp); fp = torch.cat(self._val_fp)
-        fn = torch.cat(self._val_fn); tn = torch.cat(self._val_tn)
-
-        seen = set()
-        for log_name, fn_ in self._metric_pairs.items():
-            if log_name in seen:
-                continue
-            seen.add(log_name)
-            value = fn_(tp, fp, fn, tn)
-            on_bar = log_name in ("val_dice", "val_iou")
-            self.log(log_name, value, prog_bar=on_bar)
-
-        self._val_tp.clear(); self._val_fp.clear()
-        self._val_fn.clear(); self._val_tn.clear()
+        self._flush_epoch_buffers(
+            self._val_tp, self._val_fp, self._val_fn, self._val_tn, "val_",
+        )
 
     # ------------------------------------------------------------------ #
     # Test
@@ -167,20 +169,9 @@ class BrainTumorSegModule(pl.LightningModule):
     def on_test_epoch_end(self):
         if not self._test_tp:
             return
-        tp = torch.cat(self._test_tp); fp = torch.cat(self._test_fp)
-        fn = torch.cat(self._test_fn); tn = torch.cat(self._test_tn)
-
-        seen = set()
-        for log_name, fn_ in self._metric_pairs.items():
-            test_name = log_name.replace("val_", "test_")
-            if test_name in seen:
-                continue
-            seen.add(test_name)
-            value = fn_(tp, fp, fn, tn)
-            self.log(test_name, value)
-
-        self._test_tp.clear(); self._test_fp.clear()
-        self._test_fn.clear(); self._test_tn.clear()
+        self._flush_epoch_buffers(
+            self._test_tp, self._test_fp, self._test_fn, self._test_tn, "test_",
+        )
 
     # ------------------------------------------------------------------ #
     # Optimizer + scheduler — both registry-driven

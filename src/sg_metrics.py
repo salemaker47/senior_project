@@ -92,41 +92,24 @@ def micro_iou_from_stats(tp, fp, fn, tn) -> torch.Tensor:
     return smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
 
 
-# --------------------------------------------------------------------------- #
-# Training-time metric registry (used by sg_lightning_module.py)
-# --------------------------------------------------------------------------- #
-_METRIC_REGISTRY: Dict[str, Callable] = {
-    "micro_dice": micro_dice_from_stats,
-    "micro_iou":  micro_iou_from_stats,
-}
-
-
-def get_metric_fn(name: str) -> Callable:
-    """Look up a named reduction function (registry pattern)."""
-    name = name.lower()
-    if name not in _METRIC_REGISTRY:
-        raise ValueError(
-            f"unknown metric name: {name!r}. "
-            f"available: {sorted(_METRIC_REGISTRY.keys())}"
-        )
-    return _METRIC_REGISTRY[name]
-
-
 def get_metric_kind_pairs(kind: str) -> Dict[str, Callable]:
     """
     Returns a dict {logged_metric_name: reduction_fn} for a metric "kind".
     The Lightning module logs each entry every validation epoch.
 
-    Supported kind:
-        "micro" -> {"val_dice": micro_dice, "val_iou": micro_iou}
+    Supported kinds:
+        "micro"        -> {"val_dice": micro_dice, "val_iou": micro_iou}
+        "micro_macro"  -> same as "micro" (macro per-image averaging is done at
+                          test time in sg_eval_utils; training always uses the
+                          globally pooled micro reduction)
     """
     k = kind.lower()
-    if k == "micro":
+    if k in ("micro", "micro_macro"):
         return {
             "val_dice": micro_dice_from_stats,
             "val_iou":  micro_iou_from_stats,
         }
-    raise ValueError(f"unknown metric kind: {kind!r} (only 'micro' is supported)")
+    raise ValueError(f"unknown metric kind: {kind!r} (supported: 'micro', 'micro_macro')")
 
 
 # --------------------------------------------------------------------------- #
@@ -211,19 +194,3 @@ def compute_per_image_metrics_from_logits(
     """Convenience: binarize logits then compute the full metric suite."""
     pred_binary = binarize_logits(logits, threshold=threshold)
     return compute_per_image_metrics_batch(pred_binary, target, smooth=smooth)
-
-
-# --------------------------------------------------------------------------- #
-# Backwards-compatible legacy: per_sample_metrics (just dice + iou)
-# --------------------------------------------------------------------------- #
-def per_sample_metrics(
-    logits: torch.Tensor,
-    target: torch.Tensor,
-    threshold: float = 0.5,
-    smooth: float = 1.0,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """(dice_per_sample, iou_per_sample) — kept for any caller still using it."""
-    full = compute_per_image_metrics_from_logits(
-        logits, target, threshold=threshold, smooth=smooth,
-    )
-    return full["dice"], full["iou"]

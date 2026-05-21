@@ -105,15 +105,25 @@ def _binarize_mask_to_uint8(mask: np.ndarray) -> np.ndarray:
     return (np.asarray(mask) > 0).astype(np.uint8) * 255
 
 
-def _resize_image_uint8(image: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
+def _resize_to(
+    arr: np.ndarray,
+    target_size: Tuple[int, int],
+    interp: int = cv2.INTER_LINEAR,
+    is_mask: bool = False,
+) -> np.ndarray:
     th, tw = target_size
-    return cv2.resize(image, (tw, th), interpolation=cv2.INTER_LINEAR)
+    out = cv2.resize(arr, (tw, th), interpolation=interp)
+    if is_mask:
+        return ((out > 127).astype(np.uint8)) * 255
+    return out
+
+
+def _resize_image_uint8(image: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
+    return _resize_to(image, target_size, cv2.INTER_LINEAR, is_mask=False)
 
 
 def _resize_mask_uint8(mask: np.ndarray, target_size: Tuple[int, int]) -> np.ndarray:
-    th, tw = target_size
-    out = cv2.resize(mask, (tw, th), interpolation=cv2.INTER_NEAREST)
-    return ((out > 127).astype(np.uint8)) * 255
+    return _resize_to(mask, target_size, cv2.INTER_NEAREST, is_mask=True)
 
 
 def _format_metadata_paths(

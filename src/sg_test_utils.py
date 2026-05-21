@@ -26,15 +26,15 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader
 
-from src.sg_data_utils import BrainTumorDataset, build_eval_transform
+from src.sg_data_utils import build_eval_transform, build_test_loader
 from src.sg_metrics    import (
     binarize_logits,
     compute_per_image_metrics_from_logits,
     PER_IMAGE_METRIC_NAMES,
 )
 from src.sg_models     import build_model
+from src.train_utils   import strip_model_prefix
 
 from src.file_utils import (
     sha256_of_file,
@@ -103,8 +103,7 @@ def load_model_from_ckpt(
     that the LightningModule wrap adds.
     """
     blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    sd = blob.get("state_dict", blob)
-    sd = {k[len("model."):] if k.startswith("model.") else k: v for k, v in sd.items()}
+    sd = strip_model_prefix(blob.get("state_dict", blob))
 
     model = build_model(
         name=model_name,
@@ -195,12 +194,13 @@ def evaluate_fold(
 
     test_df = test_df.reset_index(drop=True)
 
-    # Loader
-    eval_tf = build_eval_transform(image_size=image_size, preprocessing=preprocessing)
-    ds = BrainTumorDataset(test_df, project_root, transform=eval_tf, return_meta=True)
-    loader = DataLoader(
-        ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True, drop_last=False,
+    loader = build_test_loader(
+        test_df, project_root,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        image_size=image_size,
+        preprocessing=preprocessing,
+        return_meta=True,
     )
 
     rows: List[Dict[str, Any]] = []

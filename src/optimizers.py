@@ -20,9 +20,8 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 import torch
-from torch.optim.lr_scheduler import _LRScheduler  # for type hints only
 
-LRScheduler = Optional[object]   # broad: ReduceLROnPlateau is not a _LRScheduler
+LRScheduler = Optional[object]   # broad: ReduceLROnPlateau is not a subclass of _LRScheduler
 
 
 # --------------------------------------------------------------------------- #

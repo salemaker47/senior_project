@@ -314,6 +314,14 @@ def build_trainer(
 
 
 # --------------------------------------------------------------------------- #
+# State-dict helpers
+# --------------------------------------------------------------------------- #
+def strip_model_prefix(sd: dict) -> dict:
+    """Remove the 'model.' prefix that LightningModule.model adds to all keys."""
+    return {(k[len("model."):] if k.startswith("model.") else k): v for k, v in sd.items()}
+
+
+# --------------------------------------------------------------------------- #
 # Plain-PyTorch checkpoint export
 # --------------------------------------------------------------------------- #
 def export_plain_state_dict(
@@ -341,13 +349,7 @@ def export_plain_state_dict(
     dst.parent.mkdir(parents=True, exist_ok=True)
 
     blob = torch.load(src, map_location="cpu", weights_only=False)
-    sd_full = blob.get("state_dict", blob)
-
-    stripped = {}
-    for k, v in sd_full.items():
-        nk = k[len("model."):] if k.startswith("model.") else k
-        stripped[nk] = v
-
+    stripped = strip_model_prefix(blob.get("state_dict", blob))
     best_score_raw = blob.get("best_model_score")
     out = {
         "state_dict": stripped,
