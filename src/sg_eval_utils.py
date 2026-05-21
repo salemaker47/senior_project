@@ -16,7 +16,7 @@ Public API:
 
     # Cross-fold aggregation
     aggregate_cv_results(fold_summaries, experiment_name, dataset, split_scheme,
-                        reference_dice=None, repro_metadata=None)
+                        repro_metadata=None)
         -> {"cv_results", "cv_summary", "cv_summary_enriched",
             "cv_by_class", "cv_class_summary", "cv_per_image"}
 
@@ -25,9 +25,6 @@ Public API:
 
     # Enhancement E — training-time summary
     aggregate_cv_training_summary(per_fold_training_meta) -> DataFrame
-
-    # §13 reference Dice scores (for Enhancement B's delta_vs_reference)
-    REFERENCE_DICE: Dict[str, float]
 
 Column convention
 -----------------
@@ -40,7 +37,6 @@ cv_summary columns (one row, across folds):
     For each metric `m` above:  `m_mean`, `m_std`   (cross-fold)
     Plus: experiment_name, dataset, split_scheme, n_folds, n_test_images_total,
           report_dice_micro, report_iou_micro,
-          delta_vs_reference   (if a reference value is found / supplied),
           repro_metadata_json  (if supplied).
 """
 
@@ -53,25 +49,6 @@ import numpy as np
 import pandas as pd
 
 from src.eval_utils import enriched_aggregate
-
-
-# --------------------------------------------------------------------------- #
-# §13 reference Dice scores (for Enhancement B's delta_vs_reference column)
-# --------------------------------------------------------------------------- #
-# Only image_level experiments have published reference values (the FigShare
-# reference notebook used image-level KFold). patient_level experiments produce
-# no match here → get_reference_dice returns None → delta_vs_reference = None
-# in cv_summary. Both schemes are fully supported; the delta column is simply
-# omitted for patient_level runs.
-REFERENCE_DICE: Dict[str, float] = {
-    "01_dice_image_level":                  0.8426,
-    "02_bce_image_level":                   0.8485,
-    "03_dicebce_image_level":               0.8541,
-    "04_dicefocal_image_level":             0.8509,
-    "05_lovasz_image_level":                0.8418,
-    "06_clahe_dicebce_image_level":         0.8501,
-    "07_unetpp_effb4_dicebce_image_level":  0.8608,
-}
 
 
 # --------------------------------------------------------------------------- #
@@ -213,7 +190,6 @@ def aggregate_cv_results(
     experiment_name: str,
     dataset: str = "figshare",
     split_scheme: str = "image_level",
-    reference_dice: Optional[float] = None,
     repro_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
@@ -223,17 +199,11 @@ def aggregate_cv_results(
     Returns:
         cv_results          -- 1 row per fold (concat of fold_overall)
         cv_summary          -- 1 row, headline mean ± std per metric, plus
-                               report_* pretty strings, delta_vs_reference,
-                               repro_metadata_json
+                               report_* pretty strings, repro_metadata_json
         cv_summary_enriched -- 1 row per headline metric: mean/std/median/IQR/CI
-                               (Enhancement B)
         cv_by_class         -- 1 row per (fold, class) (concat of fold_by_class)
         cv_class_summary    -- 1 row per tumor_class, mean ± std across folds
         cv_per_image        -- concat of all per_image tables (~3,064 rows)
-
-    `reference_dice` lets the caller force a comparison value. If None, the
-    function looks it up from REFERENCE_DICE. Set explicitly to a value
-    (or to nan) to override.
     """
     if not fold_summaries:
         raise ValueError("aggregate_cv_results requires at least one fold summary")
@@ -260,15 +230,6 @@ def aggregate_cv_results(
         summary[f"report_{m}"] = (
             f"{summary[f'{m}_mean']:.4f} ± {summary[f'{m}_std']:.4f}"
         )
-
-    # Enhancement B's delta_vs_reference
-    if reference_dice is None:
-        reference_dice = REFERENCE_DICE.get(experiment_name)
-    summary["reference_dice"]     = reference_dice
-    summary["delta_vs_reference"] = (
-        summary["dice_micro_mean"] - float(reference_dice)
-        if reference_dice is not None else None
-    )
 
     # Enhancement F: stamp the repro metadata (JSON-serialised so it lands as
     # a single CSV cell — fine for grep / report copy/paste)
