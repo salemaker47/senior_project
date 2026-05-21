@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -42,9 +42,8 @@ from src.file_utils import (
     seg_predictions_dir,
     load_seg_prediction_manifest,
     verify_seg_predictions_match,
+    PathLike,
 )
-
-PathLike = Union[str, Path]
 
 
 # --------------------------------------------------------------------------- #
@@ -80,7 +79,7 @@ def load_model_from_pt(
     # overrides anything we'd download anyway.
     model = build_model(
         name=model_name,
-        encoder_weights=None if encoder_weights is None else encoder_weights,
+        encoder_weights=encoder_weights,
     )
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if missing or unexpected:
@@ -107,7 +106,7 @@ def load_model_from_ckpt(
 
     model = build_model(
         name=model_name,
-        encoder_weights=None if encoder_weights is None else encoder_weights,
+        encoder_weights=encoder_weights,
     )
     missing, unexpected = model.load_state_dict(sd, strict=False)
     if missing or unexpected:
@@ -203,9 +202,11 @@ def evaluate_fold(
         return_meta=True,
     )
 
+    # Build image_id lookup so row access is robust to DataLoader ordering.
+    _id_to_row = {str(r["image_id"]): r for _, r in test_df.iterrows()}
+
     rows: List[Dict[str, Any]] = []
     micro = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
-    n_seen = 0
 
     for x, y, metas in loader:
         x = x.to(device, non_blocking=True)
@@ -229,9 +230,8 @@ def evaluate_fold(
         n_b = x.size(0)
 
         for i in range(n_b):
-            row_idx = n_seen + i
-            row = test_df.iloc[row_idx]
-            img_id = str(row["image_id"])
+            img_id = str(metas["image_id"][i])
+            row = _id_to_row[img_id]
 
             pred_path_rel = ""
             if save_pngs:
@@ -262,7 +262,6 @@ def evaluate_fold(
         micro["fp"] += int(m["false_positive_pixels"].sum())
         micro["fn"] += int(m["false_negative_pixels"].sum())
         micro["tn"] += int(tn_b.sum())
-        n_seen += n_b
 
     per_image_df = pd.DataFrame(rows)
 

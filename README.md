@@ -44,7 +44,7 @@ All experiments use **5-fold cross-validation**. Two split schemes are supported
 - `image_level` — plain `KFold` on image rows. Used to reproduce the FigShare
   reference benchmark's numbers (this scheme leaks patients across folds).
 
-Because classification and segmentation use the same fold CSVs, fold *k*'s
+Because classification and segmentation share the same fold CSVs, fold *k*'s
 test set is identical for both tasks. This means Eval B can look up predicted
 masks for fold *k*'s test images without any out-of-fold lookup.
 
@@ -54,6 +54,10 @@ masks for fold *k*'s test images without any out-of-fold lookup.
 
 ```
 Senior_Project/
+├── configs/
+│   ├── seg/reference_experiments.py    canonical seg recipes (01–07)
+│   └── cls/reference_experiments.py    canonical cls recipes (cls01–cls04)
+│
 ├── data/<dataset>/
 │   ├── raw/                            original source files (.mat / .h5)
 │   ├── processed/
@@ -77,25 +81,28 @@ Senior_Project/
 │   │   └── fold_X/
 │   │       ├── manifest.json           per-fold manifest with SHA-256 hashes
 │   │       └── <image_id>.png          predicted binary mask
-│   ├── tables/<task>/<dataset>/<exp>/
-│   │   ├── cv_results.csv              one row per fold
-│   │   ├── cv_summary.csv              mean ± std across folds
-│   │   ├── cv_summary_enriched.csv     median, IQR, 95% CI per metric
-│   │   ├── cv_by_class.csv             per-(fold, class) metrics
-│   │   ├── cv_class_summary.csv        per-class mean ± std across folds
-│   │   └── cv_per_image.csv            ~3k rows, one per test image
-│   └── figures/<task>/<dataset>/<exp>/fold_X/
+│   ├── tables/
+│   │   ├── segmentation/<dataset>/<exp>/
+│   │   │   ├── cv_results.csv, cv_summary.csv, cv_summary_enriched.csv
+│   │   │   ├── cv_by_class.csv, cv_class_summary.csv, cv_per_image.csv
+│   │   │   └── fold_X_*.csv
+│   │   └── classification/<dataset>/<cls_exp>/
+│   │       ├── eval_gt/                Eval A tables
+│   │       └── eval_pred__<seg_exp>/   Eval B tables
+│   └── figures/
+│       ├── segmentation/<dataset>/<exp>/fold_X/sample_predictions/
+│       └── classification/<dataset>/<cls_exp>/<eval_variant>/
 │
 ├── notebooks/
-│   ├── setups/      01_data_preparation, 02_split
-│   ├── segmentation/ 03_train, 04_data_vis, 05_test
-│   └── classification/ 06_cls_data, 07_train_cls, 08_test_cls
+│   ├── setups/      01_data_preparation_{figshare,brats2020}
+│   ├── segmentation/ 03_train, 04_data_vis, 05_test, 06_seg_compare
+│   └── classification/ 06_classification_data, 07_train_cls, 08_test_cls, 09_cls_results
 │
-└── src/             see §Source modules below
+└── src/             see Source modules below
 ```
 
 Artifacts under `data/` and `outputs/` live in Google Drive and are not
-version-controlled. Code in `src/` and `notebooks/` lives here on GitHub.
+version-controlled. Code in `src/`, `configs/`, and `notebooks/` lives here on GitHub.
 
 ---
 
@@ -105,12 +112,12 @@ version-controlled. Code in `src/` and `notebooks/` lives here on GitHub.
 
 | file | responsibility |
 |---|---|
-| `file_utils.py` | canonical path builders (`experiment_paths`, `seg_predictions_dir`, …), JSON helpers, SHA-256 file hashing, prediction-manifest readers and verifier |
+| `file_utils.py` | canonical path builders (`experiment_paths`, `cls_eval_paths`, `seg_predictions_dir`, …), JSON helpers, SHA-256 file hashing, prediction-manifest readers and verifier. Single definition of `PathLike`. |
 | `notebook_setup.py` | Colab bootstrap: `setup_environment` (mount Drive + git pull), `copy_to_local` (Drive → local SSD), `sync_outputs_to_drive` (local SSD → Drive at end of run) |
 | `preprocess_utils.py` | raw-file converters for figshare (.mat) and brats2020 (.h5) → 256×256 PNGs + metadata records; `get_dataset_converter` dispatch |
-| `vis_utils.py` | generic image-display helpers (NB01) |
+| `vis_utils.py` | shared image loaders (`load_grayscale_png`, `load_binary_mask_png`) and `show_class_examples` grid (NB01) |
 | `data_utils.py` | metadata loading/validation, patient-level and image-level fold splitting, leakage verification, fold CSV persistence |
-| `eval_utils.py` | `enriched_aggregate` (cross-fold mean/std/median/IQR/CI table, Enhancement B); `build_fold_summary` |
+| `eval_utils.py` | `enriched_aggregate` (cross-fold mean/std/median/IQR/CI table); `build_fold_summary`; `add_mean_std` (shared mean/std helper used by both task aggregators) |
 | `optimizers.py` | string-keyed optimizer registry (adam, adamw, sgd, rmsprop) and scheduler registry (reduce_on_plateau, cosine, cosine_warm_restarts, step, multistep, exponential) |
 | `train_utils.py` | `set_global_seed`, `gather_repro_metadata` (git + GPU stamp), `TrainingTimingCallback`, `EpochSummaryPrinter`, `build_callbacks`, `build_trainer`, `export_plain_state_dict`, `strip_model_prefix` |
 
@@ -118,18 +125,27 @@ version-controlled. Code in `src/` and `notebooks/` lives here on GitHub.
 
 | file | responsibility |
 |---|---|
-| `sg_data_utils.py` | `BrainTumorDataset`, augmentation pipelines (`build_train_transform`, `build_eval_transform`), `build_dataloaders`, `build_test_loader` |
+| `sg_data_utils.py` | `BrainTumorDataset`, augmentation pipelines (`build_train_transform`, `build_eval_transform`), `build_dataloaders`, `build_test_loader`. Source of truth for `IMAGENET_MEAN/STD`. |
 | `sg_metrics.py` | `binarize_logits`, `dice_score`, `iou_score`, SMP-backed `get_smp_stats` / `micro_dice_from_stats` / `micro_iou_from_stats`, full per-image metric suite (`compute_per_image_metrics_from_logits`), metric-kind registry (`get_metric_kind_pairs`) |
 | `sg_losses.py` | loss factory: bce, dice, focal, lovasz, dice_bce, dice_focal, combo (`CombinedLoss`) |
 | `sg_models.py` | SMP model factory: U-Net/ResNet34, U-Net/ResNet50, U-Net++/EfficientNet-B4, U-Net++/ResNet34, Linknet/ResNet34, MA-Net/ResNet34 |
-| `sg_lightning_module.py` | `BrainTumorSegModule` — training/validation/test steps, micro-pooled metric accumulation via shared `_flush_epoch_buffers`, registry-driven optimizer + scheduler |
-| `sg_eval_utils.py` | `summarize_fold_results` (per-fold tables), `aggregate_cv_results` (cross-fold tables), `aggregate_cv_per_patient`, `aggregate_cv_training_summary` |
+| `sg_lightning_module.py` | `BrainTumorSegModule` — training/validation steps, micro-pooled metric accumulation, registry-driven optimizer + scheduler |
+| `sg_eval_utils.py` | `micro_dice_from_counts`, `micro_iou_from_counts`, `micro_sensitivity_from_counts`, `micro_precision_from_counts`; `summarize_fold_results`, `aggregate_cv_results`, `aggregate_cv_per_patient`, `aggregate_cv_training_summary` |
 | `sg_test_utils.py` | `load_model_from_pt`, `load_model_from_ckpt`, `predict_mask` (single-image), `evaluate_fold` (batched inference + PNG saving + per-fold manifest), `write_experiment_manifest` |
 | `sg_vis_utils.py` | `show_triplet`, `show_overlay_triplet`, `show_image_gt_pred_overlay` |
 
-### Classification (`cls_` prefix) — Phase 2, in progress
+### Classification (`cls_` prefix)
 
-`cls_data_utils`, `cls_models`, `cls_losses`, `cls_metrics`, `cls_lightning_module`, `cls_test_utils`, `cls_eval_utils`
+| file | responsibility |
+|---|---|
+| `cls_data_utils.py` | `extract_patch` (mask-guided ROI crop), `BrainTumorClsDataset`, cls transforms, `build_dataloaders_cls`, `build_test_loader_cls`. Supports both `mask_source="gt"` and `mask_source="predicted"`. |
+| `cls_models.py` | timm-based model factory: resnet50, efficientnet_b0/b4, vit_small_patch16_224 |
+| `cls_losses.py` | loss factory: cross_entropy, cross_entropy_smooth (label smoothing), focal_ce |
+| `cls_metrics.py` | `macro_f1_from_preds`, `accuracy_from_preds`, `per_class_metrics`, `confusion_matrix_from_preds`, `compute_per_image_metrics_cls` |
+| `cls_lightning_module.py` | `BrainTumorClsModule` — training/validation steps, per-epoch macro F1 + accuracy accumulation, registry-driven optimizer + scheduler |
+| `cls_test_utils.py` | `load_cls_model_from_pt`, `evaluate_fold_cls` (handles both mask sources, writes per-fold manifest and tables) |
+| `cls_eval_utils.py` | `aggregate_cv_results_cls` (cross-fold tables + enriched summary + confusion matrix), `aggregate_cv_confusion_from_matrix` |
+| `cls_vis_utils.py` | `plot_confusion_matrix`, `plot_confusion_pair`, `plot_per_class_f1`, `plot_eval_gap`, `plot_sample_patches` |
 
 ---
 
@@ -137,50 +153,39 @@ version-controlled. Code in `src/` and `notebooks/` lives here on GitHub.
 
 | notebook | what it does |
 |---|---|
-| `01_data_preparation` | converts raw files → PNGs, writes `metadata.csv` and `preprocessing_config.json`. Knob: `DATASET` |
+| `01_data_preparation_figshare` | converts figshare .mat files → PNGs, writes `metadata.csv` and `preprocessing_config.json` |
+| `01_data_preparation_brats2020` | converts brats2020 .h5 slices → PNGs (FLAIR + whole-tumor mask), same output layout |
 | `02_split` | generates 5-fold train/val/test CSVs using the chosen split scheme. Knobs: `DATASET`, `SPLIT_SCHEME` |
-| `03_train` | trains one or all 5 folds for a segmentation experiment. Writes checkpoints, logs, and training-curve figures to local SSD, syncs to Drive at the end |
-| `04_data_vis` | visualisation notebook: sample-prediction overlays (best / worst / random by Dice), per-class Dice bar chart, training-curves overlay across folds |
-| `05_test` | runs batched inference on each fold's test set, saves predicted PNGs and per-fold manifests, writes all 6 CV tables (cv_results, cv_summary, cv_summary_enriched, cv_by_class, cv_class_summary, cv_per_image) |
-| `06_cls_data` | QA: visualises patches extracted with GT masks vs predicted masks side-by-side |
-| `07_train_cls` | trains classification experiment (GT masks only for training) |
-| `08_test_cls` | Eval A (`EVAL_MASK_SOURCE="gt"`) and Eval B (`EVAL_MASK_SOURCE="predicted"`); computes and prints the Eval A − Eval B gap |
+| `03_train` | trains one or all 5 folds for a segmentation experiment; syncs checkpoints + logs to Drive |
+| `04_data_vis` | qualitative figures: sample-prediction overlays (best / worst / random by Dice), per-class Dice bar chart, training-curves across folds |
+| `05_test` | batched inference → predicted PNGs + per-fold manifests + all 6 CV tables (cv_results, cv_summary, cv_summary_enriched, cv_by_class, cv_class_summary, cv_per_image) |
+| `06_seg_compare` | cross-experiment comparison: overlay multiple `cv_summary.csv` tables, rank by Dice |
+| `06_classification_data` | QA: visualises patches extracted with GT masks vs predicted masks side-by-side |
+| `07_train_cls` | trains one or all 5 classification folds (GT masks only); syncs to Drive |
+| `08_test_cls` | Eval A (`mask_source="gt"`) and Eval B (`mask_source="predicted"`); prints the Eval A − Eval B macro F1 gap |
+| `09_cls_results` | loads saved CSVs from Drive, produces publication-ready figures: confusion matrix pair, per-class F1 bars, Eval A vs B gap chart, sample-patch grid |
 
 ---
 
 ## Experiment configuration
 
 Every run is fully specified by an `EXPERIMENT` dict in Cell 3 of the relevant
-notebook. Changing one experiment only requires editing this dict — no source
-files are touched between runs.
+notebook. The canonical recipes live in `configs/seg/reference_experiments.py`
+and `configs/cls/reference_experiments.py`. Changing one experiment only requires
+editing this dict — no source files are touched between runs.
 
 ```python
-EXPERIMENT = {
-    "name":         "03_dicebce_image_level",
-    "task":         "segmentation",
-    "dataset":      "figshare",
-    "split_scheme": "image_level",
+# Segmentation
+EXPERIMENT = get_experiment("03_dicebce_image_level", fold=1)
 
-    "model_name":      "smp_unet_resnet34",
-    "encoder_weights": "imagenet",
-    "loss_name":       "dice_bce",
-    "loss_kwargs":     {},
-
-    "optimizer_name":   "adam",
-    "optimizer_kwargs": {"lr": 1e-4},
-    "scheduler_name":   "reduce_on_plateau",
-    "scheduler_kwargs": {"mode": "min", "factor": 0.1, "patience": 5},
-
-    "augmentation_strength": "reference",
-    "preprocessing":         "original",
-    "image_size": 256,
-    "batch_size": 8,
-    "max_epochs": 100,
-    "patience":   15,
-    "threshold":  0.5,
-    "seed":       42,
-    "metric_kind": "micro_macro",
-}
+# Classification
+EXPERIMENT = get_experiment(
+    "cls01_resnet50",
+    dataset="figshare",
+    split_scheme="image_level",
+    fold=1,
+    name="cls01_resnet50",    # always pass name= explicitly
+)
 ```
 
 The full config is written to `experiment_config.json` alongside each
@@ -203,7 +208,9 @@ is retrained and the old predictions on disk silently go stale.
 
 ---
 
-## Reference segmentation experiments (figshare, image-level)
+## Reference experiments
+
+### Segmentation (figshare, image-level)
 
 | exp name | loss | architecture | reference Dice |
 |---|---|---|---|
@@ -218,13 +225,25 @@ is retrained and the old predictions on disk silently go stale.
 All use Adam lr=1e-4, ReduceLROnPlateau (factor=0.1, patience=5), max_epochs=100,
 early-stopping patience=15, threshold=0.5, seed=42.
 
+### Classification (figshare, image-level)
+
+| exp name | model | notes |
+|---|---|---|
+| `cls01_resnet50` | ResNet-50 | baseline; Eval B uses `07_unetpp_effb4_dicebce_image_level` |
+| `cls02_effb0` | EfficientNet-B0 | |
+| `cls03_effb4` | EfficientNet-B4 | batch_size=16 for VRAM |
+| `cls04_vit` | ViT-Small/16 | batch_size=16 for VRAM |
+
+All use AdamW lr=1e-4 wd=1e-4, cosine schedule (T_max=50), label-smoothing CE
+(smoothing=0.1), max_epochs=50, early-stopping patience=10, seed=42.
+
 ---
 
 ## Dev / run workflow
 
 ```
 VS Code (desktop)
-    edit src/*.py or notebooks/
+    edit src/*.py, configs/*.py, or notebooks/
     git commit + push
 
 Google Colab

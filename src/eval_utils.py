@@ -12,6 +12,9 @@ Public API:
                           mean, std, median, IQR, min/max, 95% CI per metric.
                           One row per metric (wide-formatted for printing).
 
+    add_mean_std          Add <metric>_mean / <metric>_std keys to a row dict
+                          in-place. Shared by sg_eval_utils and cls_eval_utils.
+
 Task-specific aggregators (per-image seg metrics, per-class confusion
 matrices, per-patient roll-ups, ...) live in src/sg_eval_utils.py and
 src/cls_eval_utils.py.
@@ -20,7 +23,7 @@ src/cls_eval_utils.py.
 from __future__ import annotations
 
 import math
-from typing import Dict, Sequence
+from typing import Any, Dict, List, Sequence
 
 import numpy as np
 import pandas as pd
@@ -129,3 +132,18 @@ def enriched_aggregate(
             "ci95_upper": float(ci_hi),
         })
     return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------- #
+# Shared cross-fold summary helper
+# --------------------------------------------------------------------------- #
+def add_mean_std(
+    row: Dict[str, Any],
+    df: pd.DataFrame,
+    metrics: List[str],
+) -> None:
+    """Add <metric>_mean and <metric>_std keys to `row` in-place."""
+    for m in metrics:
+        vals = df[m].astype(float)
+        row[f"{m}_mean"] = float(vals.mean())
+        row[f"{m}_std"]  = float(vals.std(ddof=1)) if len(vals) > 1 else 0.0

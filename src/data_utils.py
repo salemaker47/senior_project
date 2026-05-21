@@ -27,12 +27,12 @@ lives in src/sg_data_utils.py (M5).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 
 # --------------------------------------------------------------------------- #
@@ -87,8 +87,9 @@ def validate_metadata(
     assert not missing_cols, f"metadata is missing required columns: {missing_cols}"
 
     assert df["image_id"].is_unique, "metadata image_id is not unique"
-    for c in ("patient_id", "image_path", "mask_path", "tumor_class"):
-        assert df[c].notna().all(), f"metadata column {c} has missing values"
+    for c in cols:
+        if c in df.columns:
+            assert df[c].notna().all(), f"metadata column {c} has missing values"
 
     if check_files_exist:
         assert project_root is not None, (

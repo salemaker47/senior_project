@@ -39,13 +39,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple
 
 import cv2
 import h5py
 import numpy as np
 
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 # --------------------------------------------------------------------------- #
 # Constants

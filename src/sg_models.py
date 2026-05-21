@@ -22,19 +22,11 @@ REGISTRY PATTERN (project instruction §5):
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import torch.nn as nn
 import segmentation_models_pytorch as smp
 
-
-# Default kwargs for SMP architectures. Overrideable via build_model args.
-_DEFAULTS: Dict[str, Any] = {
-    "in_channels":     3,    # 3-ch grayscale-replicated for ImageNet pretraining
-    "classes":         1,    # binary tumor segmentation
-    "encoder_weights": "imagenet",
-    "activation":      None, # raw logits
-}
 
 
 def build_model(

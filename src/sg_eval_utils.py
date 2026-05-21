@@ -48,7 +48,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from src.eval_utils import enriched_aggregate
+from src.eval_utils import enriched_aggregate, add_mean_std
 
 
 # --------------------------------------------------------------------------- #
@@ -64,19 +64,14 @@ def micro_iou_from_counts(tp: int, fp: int, fn: int, smooth: float = 1.0) -> flo
     return float((tp + smooth) / (tp + fp + fn + smooth))
 
 
-# --------------------------------------------------------------------------- #
-# Internal helpers
-# --------------------------------------------------------------------------- #
-def _add_mean_std(
-    row: Dict[str, Any],
-    df: "pd.DataFrame",
-    metrics: "List[str]",
-) -> None:
-    """Add <metric>_mean and <metric>_std keys to `row` in-place."""
-    for m in metrics:
-        vals = df[m].astype(float)
-        row[f"{m}_mean"] = float(vals.mean())
-        row[f"{m}_std"]  = float(vals.std(ddof=1)) if len(vals) > 1 else 0.0
+def micro_sensitivity_from_counts(tp: int, fn: int, smooth: float = 1.0) -> float:
+    """Pooled sensitivity (recall) from globally pooled tp/fn."""
+    return float((tp + smooth) / (tp + fn + smooth))
+
+
+def micro_precision_from_counts(tp: int, fp: int, smooth: float = 1.0) -> float:
+    """Pooled precision from globally pooled tp/fp."""
+    return float((tp + smooth) / (tp + fp + smooth))
 
 
 # --------------------------------------------------------------------------- #
@@ -106,15 +101,12 @@ def _fold_overall_row(
     n = int(len(sub))
     n_total_pixels = int(sub["total_pixels"].sum()) if "total_pixels" in sub.columns else 0
 
-    micro_sens = (tp + 1.0) / (tp + fn + 1.0)
-    micro_prec = (tp + 1.0) / (tp + fp + 1.0)
-
     return {
         "n_images":           n,
         "dice_micro":         micro_dice_from_counts(tp, fp, fn),
         "iou_micro":          micro_iou_from_counts(tp, fp, fn),
-        "sensitivity_micro":  float(micro_sens),
-        "precision_micro":    float(micro_prec),
+        "sensitivity_micro":  micro_sensitivity_from_counts(tp, fn),
+        "precision_micro":    micro_precision_from_counts(tp, fp),
         "total_tp":           tp,
         "total_fp":           fp,
         "total_fn":           fn,
@@ -233,7 +225,7 @@ def aggregate_cv_results(
         "n_folds":              int(cv_results["fold"].nunique()),
         "n_test_images_total":  int(cv_results["n_images"].sum()),
     }
-    _add_mean_std(summary, cv_results, _HEADLINE_METRICS)
+    add_mean_std(summary, cv_results, _HEADLINE_METRICS)
 
     # Pretty report strings for the two headline numbers people quote
     for m in ("dice_micro", "iou_micro"):
@@ -264,7 +256,7 @@ def aggregate_cv_results(
             "n_folds":         int(sub["fold"].nunique()),
             "n_test_images_total": int(sub["n_images"].sum()),
         }
-        _add_mean_std(row, sub, _HEADLINE_METRICS)
+        add_mean_std(row, sub, _HEADLINE_METRICS)
         # The headline report string people will paste into the report:
         row["report_dice_micro"] = (
             f"{row['dice_micro_mean']:.4f} ± {row['dice_micro_std']:.4f}"
@@ -328,9 +320,11 @@ def aggregate_cv_per_patient(cv_per_image_df: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 _TRAINING_META_KEYS = (
     "fold", "best_epoch", "best_val_dice",
-    "total_epochs_trained", "train_seconds", "train_minutes",
+    "total_epochs_trained", "train_seconds",
     "params_count", "peak_gpu_mem_mb",
 )
+# "train_minutes" is derived from "train_seconds" inside aggregate_cv_training_summary
+# and is not an input key — it is not listed above.
 
 
 def aggregate_cv_training_summary(

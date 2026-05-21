@@ -54,9 +54,9 @@ import subprocess
 import sys
 import zipfile as _zipfile
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple, Union
+from typing import Iterable, Optional, Sequence, Tuple
 
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 DEFAULT_LOCAL_ROOT  = "/content/Senior_Project_local"
 DEFAULT_REPO_ROOT   = "/content/senior_project"
@@ -233,6 +233,9 @@ def copy_to_local(
             print(f"[copy_to_local] copying zip {zip_src.name} ({size_mb:.0f} MB) ...")
             shutil.copy2(str(zip_src), str(local_zip))
             print(f"[copy_to_local] extracting to {local_data} ...")
+            # Try the system `unzip` binary first — it is ~10× faster than
+            # Python's zipfile on Colab's /proc-based filesystem.  Fall back
+            # to stdlib zipfile if the binary is absent or returns an error.
             r = subprocess.run(
                 ["unzip", "-q", str(local_zip), "-d", str(local_data)],
                 capture_output=True, text=True,

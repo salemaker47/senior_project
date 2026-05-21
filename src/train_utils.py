@@ -15,13 +15,11 @@ from __future__ import annotations
 
 import os
 import platform
-import random
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 import torch
 
 import pytorch_lightning as pl
@@ -32,7 +30,7 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import CSVLogger
 
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 DEFAULT_REPO_ROOT = "/content/senior_project"   # the cloned-repo path on Colab
 
@@ -45,10 +43,7 @@ def set_global_seed(seed: int = 42, deterministic: bool = False) -> None:
     Seed all standard sources of randomness. `deterministic=True` forces CuDNN
     into a deterministic mode (slower; only enable for byte-for-byte repro).
     """
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    # pl.seed_everything seeds random, numpy, torch, and CUDA internally.
     pl.seed_everything(seed, workers=True)
     os.environ["PYTHONHASHSEED"] = str(seed)
     if deterministic:
@@ -205,7 +200,7 @@ class EpochSummaryPrinter(pl.Callback):
 
     def __init__(
         self,
-        metric_keys=("train_loss", "val_loss", "val_dice", "val_iou"),
+        metric_keys=("train_loss", "val_loss"),
     ):
         super().__init__()
         self.metric_keys = tuple(metric_keys)
@@ -236,15 +231,18 @@ def build_callbacks(
     monitor: str = "val_dice",
     mode: str = "max",
     patience: int = 15,
-    epoch_summary_keys=("train_loss", "val_loss", "val_dice", "val_iou"),
+    epoch_summary_keys=("train_loss", "val_loss"),
 ):
     """
-    Build the standard callback list for a seg training run:
+    Build the standard callback list for seg or cls training:
         - ModelCheckpoint        (save best.ckpt on `monitor`)
         - EarlyStopping          (stop when `monitor` plateaus for `patience` epochs)
         - LearningRateMonitor    (log LR per epoch — useful for ReduceLROnPlateau)
         - TrainingTimingCallback (Enhancement E — captures train_seconds, peak_gpu_mem)
         - EpochSummaryPrinter    (persistent one-line-per-epoch in notebook output)
+
+    For seg runs pass epoch_summary_keys=("train_loss","val_loss","val_dice","val_iou").
+    For cls runs pass epoch_summary_keys=("train_loss","val_loss","val_macro_f1").
     """
     ckpt_dir = Path(ckpt_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)

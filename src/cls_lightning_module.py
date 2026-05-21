@@ -1,96 +1,81 @@
 """
-src/sg_lightning_module.py
+src/cls_lightning_module.py
 
-PyTorch Lightning module for binary tumor segmentation: BrainTumorSegModule.
+PyTorch Lightning module for 3-class brain tumor classification: BrainTumorClsModule.
 
-REGISTRY-DRIVEN: optimizer, scheduler, and metric-kind are all selected by
-string name. New variants are added by extending the registries in
-src/sg_metrics.py and src/optimizers.py — never by editing this file.
+REGISTRY-DRIVEN: optimizer and scheduler are selected by string name.
+New variants are added by extending src/optimizers.py — never by editing this file.
 
-Defaults match the FigShare reference notebook exactly:
-    optimizer    = adam, lr=1e-4
-    scheduler    = reduce_on_plateau, factor=0.1, patience=5, monitor=val_loss
-    metric_kind  = "micro"  (globally pooled Dice/IoU; EarlyStopping monitors val_dice)
+Defaults:
+    optimizer    = adamw, lr=1e-4, weight_decay=1e-4
+    scheduler    = cosine, T_max=50, eta_min=1e-6
+    monitor      = val_macro_f1   (EarlyStopping + ModelCheckpoint maximize this)
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
-from src.sg_metrics import get_smp_stats, get_metric_kind_pairs
+from src.cls_metrics import macro_f1_from_preds, accuracy_from_preds
 from src.optimizers import get_optimizer, get_scheduler, scheduler_needs_metric
 
 
-class BrainTumorSegModule(pl.LightningModule):
+class BrainTumorClsModule(pl.LightningModule):
     """
     Parameters
     ----------
     model
-        nn.Module producing raw logits of shape (N, 1, H, W).
+        nn.Module producing raw logits of shape (N, num_classes).
     loss_fn
-        nn.Module operating on (logits, target). See src/sg_losses.py.
-    threshold
-        Binarization threshold for prediction-time metrics. Default 0.5.
+        nn.Module operating on (logits, labels). See src/cls_losses.py.
+    num_classes
+        Number of output classes (default 3).
 
     optimizer_name, optimizer_kwargs
         Forwarded to src/optimizers.get_optimizer. Must include 'lr'.
     scheduler_name, scheduler_kwargs
         Forwarded to src/optimizers.get_scheduler. Pass `None` to disable.
     scheduler_monitor
-        Metric name the scheduler watches (only used by metric-driven
+        Metric name the scheduler watches (only relevant for metric-driven
         schedulers like ReduceLROnPlateau).
     scheduler_interval
         'epoch' or 'step'. Default 'epoch'.
-
-    metric_kind
-        "micro". Globally pooled Dice/IoU logged as val_dice / val_iou.
-        Only "micro" is supported.
     """
 
     def __init__(
         self,
         model: nn.Module,
         loss_fn: nn.Module,
-        threshold: float = 0.5,
+        num_classes: int = 3,
         # ---- optimizer ----
-        optimizer_name: str = "adam",
+        optimizer_name: str = "adamw",
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         # ---- scheduler ----
-        scheduler_name: Optional[str] = "reduce_on_plateau",
+        scheduler_name: Optional[str] = "cosine",
         scheduler_kwargs: Optional[Dict[str, Any]] = None,
-        scheduler_monitor: str = "val_loss",
+        scheduler_monitor: str = "val_macro_f1",
         scheduler_interval: str = "epoch",
-        # ---- metrics ----
-        metric_kind: str = "micro",
     ):
         super().__init__()
         self.model = model
         self.loss_fn = loss_fn
-        self.threshold = threshold
+        self.num_classes = num_classes
 
-        # Optimizer / scheduler config (built lazily in configure_optimizers).
         self.optimizer_name = optimizer_name
-        self.optimizer_kwargs = dict(optimizer_kwargs or {"lr": 1e-4})
+        self.optimizer_kwargs = dict(optimizer_kwargs or {"lr": 1e-4, "weight_decay": 1e-4})
         self.scheduler_name = scheduler_name
-        self.scheduler_kwargs = dict(scheduler_kwargs or {
-            "mode": "min", "factor": 0.1, "patience": 5, "min_lr": 1e-7,
-        })
+        self.scheduler_kwargs = dict(scheduler_kwargs or {"T_max": 50, "eta_min": 1e-6})
         self.scheduler_monitor = scheduler_monitor
         self.scheduler_interval = scheduler_interval
 
-        # Metric pairs (dict: logged_name -> reduction_fn(tp,fp,fn,tn)).
-        self.metric_kind = metric_kind
-        self._metric_pairs = get_metric_kind_pairs(metric_kind)
-
-        # Per-epoch stat buffers — flushed in _flush_epoch_buffers.
-        self._val_tp: list = []
-        self._val_fp: list = []
-        self._val_fn: list = []
-        self._val_tn: list = []
+        # Per-epoch accumulation buffers; flushed in _flush_cls_buffers.
+        self._val_logits: List[torch.Tensor] = []
+        self._val_labels: List[torch.Tensor] = []
 
     # ------------------------------------------------------------------ #
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -118,36 +103,41 @@ class BrainTumorSegModule(pl.LightningModule):
         logits = self(x)
         loss = self.loss_fn(logits, y)
 
-        tp, fp, fn, tn = get_smp_stats(logits, y, threshold=self.threshold)
-        self._val_tp.append(tp); self._val_fp.append(fp)
-        self._val_fn.append(fn); self._val_tn.append(tn)
+        self._val_logits.append(logits.detach().cpu())
+        self._val_labels.append(y.detach().cpu())
 
         self.log(
             "val_loss", loss,
-            prog_bar=True, on_step=False, on_epoch=True,
+            prog_bar=False, on_step=False, on_epoch=True,
             batch_size=x.size(0),
         )
         return loss
 
-    def _flush_epoch_buffers(
+    def _flush_cls_buffers(
         self,
-        tp_buf: list, fp_buf: list, fn_buf: list, tn_buf: list,
-        log_prefix: str,
+        logits_buf: List[torch.Tensor],
+        labels_buf: List[torch.Tensor],
+        prefix: str,
     ) -> None:
-        tp = torch.cat(tp_buf); fp = torch.cat(fp_buf)
-        fn = torch.cat(fn_buf); tn = torch.cat(tn_buf)
-        for val_name, fn_ in self._metric_pairs.items():
-            name = val_name if log_prefix == "val_" else val_name.replace("val_", log_prefix)
-            on_bar = val_name in ("val_dice", "val_iou") and log_prefix == "val_"
-            self.log(name, fn_(tp, fp, fn, tn), prog_bar=on_bar)
-        tp_buf.clear(); fp_buf.clear(); fn_buf.clear(); tn_buf.clear()
+        all_logits = torch.cat(logits_buf, dim=0)    # (N, C)
+        all_labels = torch.cat(labels_buf, dim=0)    # (N,)
+        preds  = all_logits.argmax(dim=1).numpy()
+        labels = all_labels.numpy()
+
+        macro_f1 = macro_f1_from_preds(preds, labels, num_classes=self.num_classes)
+        acc      = accuracy_from_preds(preds, labels)
+
+        on_bar = (prefix == "val_")
+        self.log(f"{prefix}macro_f1", macro_f1, prog_bar=on_bar)
+        self.log(f"{prefix}accuracy", acc,      prog_bar=False)
+
+        logits_buf.clear()
+        labels_buf.clear()
 
     def on_validation_epoch_end(self):
-        if not self._val_tp:
+        if not self._val_logits:
             return
-        self._flush_epoch_buffers(
-            self._val_tp, self._val_fp, self._val_fn, self._val_tn, "val_",
-        )
+        self._flush_cls_buffers(self._val_logits, self._val_labels, "val_")
 
     # ------------------------------------------------------------------ #
     # Optimizer + scheduler — both registry-driven

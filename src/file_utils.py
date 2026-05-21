@@ -5,7 +5,7 @@ Path handling, JSON I/O, and prediction-manifest helpers for Senior_Project.
 
 Three orthogonal axes define every artifact:
     - task:            "segmentation" or "classification"
-    - dataset:         "figshare", "brats2024", ...
+    - dataset:         "figshare", "brats2020", ...
     - experiment_name: e.g. "01_dice_image_level", "cls01_resnet50"
 
 Layout (mirrors §3 of the project instruction):
@@ -31,9 +31,12 @@ Layout (mirrors §3 of the project instruction):
             predictions/segmentation/<dataset>/<seg_exp>/prediction_manifest.json
             reports/
 
-Note:
-    `cls_eval_paths` (the classification eval-variant helper) is deferred to
-    Phase 2. Phase 1 covers segmentation only.
+Classification eval-variant paths:
+    cls_eval_paths(root, dataset, cls_experiment_name, mask_source,
+                   seg_experiment_name) -> Dict[str, Path]
+        Returns tables_dir and figures_dir for Eval A ("gt") or Eval B ("predicted").
+        Eval A -> .../eval_gt/
+        Eval B -> .../eval_pred__<seg_experiment_name>/
 """
 
 from __future__ import annotations
@@ -359,3 +362,54 @@ def verify_seg_predictions_match(
         )
 
     return manifest
+
+
+# --------------------------------------------------------------------------- #
+# Classification eval-variant paths (Phase 2)
+# --------------------------------------------------------------------------- #
+def cls_eval_paths(
+    root: PathLike,
+    dataset: str,
+    cls_experiment_name: str,
+    mask_source: str,
+    seg_experiment_name: Optional[str] = None,
+) -> Dict[str, Path]:
+    """
+    Return the tables and figures directories for one classification eval variant.
+
+    mask_source="gt"        -> eval_dir = "eval_gt"
+    mask_source="predicted" -> eval_dir = "eval_pred__<seg_experiment_name>"
+                               (seg_experiment_name is required)
+
+    Both directories are created. The eval_dir key is also returned so the
+    notebook can pass it directly to evaluate_fold_cls as `eval_dir`.
+
+    Layout:
+        outputs/tables/classification/<dataset>/<cls_exp>/<eval_dir>/
+        outputs/figures/classification/<dataset>/<cls_exp>/<eval_dir>/
+    """
+    if mask_source not in ("gt", "predicted"):
+        raise ValueError(f"mask_source must be 'gt' or 'predicted', got {mask_source!r}")
+    if mask_source == "predicted" and not seg_experiment_name:
+        raise ValueError("seg_experiment_name is required when mask_source='predicted'")
+
+    if mask_source == "gt":
+        eval_dir_name = "eval_gt"
+    else:
+        eval_dir_name = f"eval_pred__{seg_experiment_name}"
+
+    root = Path(root)
+    base_tables  = root / "outputs" / "tables"  / "classification" / dataset / cls_experiment_name
+    base_figures = root / "outputs" / "figures" / "classification" / dataset / cls_experiment_name
+
+    tables_dir  = base_tables  / eval_dir_name
+    figures_dir = base_figures / eval_dir_name
+
+    tables_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    return {
+        "eval_dir":   tables_dir,    # primary output dir (also used for manifests)
+        "tables_dir": tables_dir,
+        "figures_dir": figures_dir,
+    }

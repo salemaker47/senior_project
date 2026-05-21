@@ -29,7 +29,7 @@ Preprocessing options (passed via EXPERIMENT["preprocessing"]):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple
 
 import albumentations as A
 import cv2
@@ -39,7 +39,7 @@ import torch
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, Dataset
 
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD  = (0.229, 0.224, 0.225)
@@ -214,8 +214,6 @@ class BrainTumorDataset(Dataset):
         if mask.ndim == 2:
             mask = mask.unsqueeze(0)
         mask = mask.float()
-        if mask.max() > 1.5:                      # in case mask came in as {0, 255}
-            mask = (mask > 0.5).float()
 
         if self.return_meta:
             meta = {

@@ -6,22 +6,21 @@ used in 01_data_preparation.ipynb. Loaders are exposed publicly so seg- and
 cls-specific vis modules can reuse them without duplication.
 
 Seg-specific helpers (triplet / overlay-triplet / 4-panel image+GT+pred)
-live in src/sg_vis_utils.py. Cls-specific helpers (patch grids) will live
-in src/cls_vis_utils.py in Phase 2 (or be folded into a different module
-depending on what NB06 needs).
+live in src/sg_vis_utils.py. Cls-specific helpers (patch grids, confusion
+matrices, F1 bars, gap charts) live in src/cls_vis_utils.py.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from PIL import Image
 
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 
 # --------------------------------------------------------------------------- #
@@ -29,7 +28,10 @@ PathLike = Union[str, Path]
 # --------------------------------------------------------------------------- #
 def load_grayscale_png(path: PathLike) -> np.ndarray:
     """Load a grayscale PNG as uint8 (H, W)."""
-    return np.asarray(Image.open(path).convert("L"))
+    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f"could not read image: {path}")
+    return img
 
 
 def load_binary_mask_png(path: PathLike) -> np.ndarray:
@@ -37,8 +39,10 @@ def load_binary_mask_png(path: PathLike) -> np.ndarray:
     Load a binary mask PNG as uint8 (H, W) with values {0, 1}.
     Threshold at 127 in case the mask was saved as {0, 255}.
     """
-    arr = np.asarray(Image.open(path).convert("L"))
-    return (arr > 127).astype(np.uint8)
+    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f"could not read mask: {path}")
+    return (img > 127).astype(np.uint8)
 
 
 # --------------------------------------------------------------------------- #

@@ -21,14 +21,13 @@ imported here rather than duplicated.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from src.vis_utils import load_grayscale_png, load_binary_mask_png
-
-PathLike = Union[str, Path]
+from src.file_utils import PathLike
 
 # Color overlays — intentionally vivid, easy to read in the report.
 _TP_COLOR = np.array([0.0, 1.0, 0.0])  # green: pred ∩ gt
