@@ -22,7 +22,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 from src.cls_metrics import macro_f1_from_preds, accuracy_from_preds
-from src.optimizers import get_optimizer, get_scheduler, scheduler_needs_metric
+from src.optimizers import get_optimizer, get_scheduler, scheduler_needs_metric, build_scheduler_cfg
 
 
 class BrainTumorClsModule(pl.LightningModule):
@@ -153,15 +153,8 @@ class BrainTumorClsModule(pl.LightningModule):
             optimizer,
             **self.scheduler_kwargs,
         )
-        if scheduler is None:
+        monitor = self.scheduler_monitor if scheduler_needs_metric(self.scheduler_name) else None
+        sched_cfg = build_scheduler_cfg(scheduler, self.scheduler_interval, monitor)
+        if sched_cfg is None:
             return optimizer
-
-        sched_cfg: Dict[str, Any] = {
-            "scheduler": scheduler,
-            "interval": self.scheduler_interval,
-            "frequency": 1,
-        }
-        if scheduler_needs_metric(self.scheduler_name):
-            sched_cfg["monitor"] = self.scheduler_monitor
-
         return {"optimizer": optimizer, "lr_scheduler": sched_cfg}

@@ -48,9 +48,7 @@ import numpy as np
 import pandas as pd
 
 from src.file_utils import PathLike
-
-# Canonical order used throughout this module
-_DEFAULT_CLASS_NAMES: List[str] = ["meningioma", "glioma", "pituitary"]
+from src.cls_data_utils import CLASS_NAMES as _DEFAULT_CLASS_NAMES
 
 # Colour palette for Eval A / Eval B bars
 _COLOR_A = "#4878CF"   # blue
@@ -508,12 +506,13 @@ def plot_sample_patches(
             # Load
             img = cv2.imread(str(img_path),  cv2.IMREAD_GRAYSCALE) if img_path.exists()  else None
             msk = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path.exists() else None
-            msk_bin = (msk > 127).astype(np.uint8) * 255 if msk is not None else None
 
             if img is None:
                 ax.text(0.5, 0.5, "N/A", ha="center", va="center", transform=ax.transAxes)
                 continue
 
+            # Fall back to a zeros mask (whole-image crop) when the mask file is missing.
+            msk_bin = (msk > 127).astype(np.uint8) * 255 if msk is not None else np.zeros_like(img)
             patch = extract_patch(img, msk_bin, target_size=target_size, padding_frac=padding_frac)
             ax.imshow(patch)
 

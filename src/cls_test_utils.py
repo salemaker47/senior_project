@@ -109,6 +109,7 @@ def evaluate_fold_cls(
     padding_frac: float = 0.10,
     batch_size: int = 32,
     num_workers: int = 2,
+    num_classes: int = 3,
     device: str = "cuda",
 ) -> Dict[str, Any]:
     """
@@ -175,7 +176,7 @@ def evaluate_fold_cls(
         patches = patches.to(device, non_blocking=True)
         logits  = model(patches)
 
-        m = compute_per_image_metrics_cls(logits, labels, num_classes=3)
+        m = compute_per_image_metrics_cls(logits, labels, num_classes=num_classes)
 
         n_b = patches.size(0)
         for i in range(n_b):
@@ -203,10 +204,10 @@ def evaluate_fold_cls(
     all_preds  = per_image_df["predicted_class"].to_numpy(dtype=np.int64)
     all_true   = per_image_df["true_class"].to_numpy(dtype=np.int64)
 
-    macro_f1 = macro_f1_from_preds(all_preds, all_true)
+    macro_f1 = macro_f1_from_preds(all_preds, all_true, num_classes=num_classes)
     accuracy  = accuracy_from_preds(all_preds, all_true)
-    pcm       = per_class_metrics(all_preds, all_true)
-    cm        = confusion_matrix_from_preds(all_preds, all_true)
+    pcm       = per_class_metrics(all_preds, all_true, num_classes=num_classes)
+    cm        = confusion_matrix_from_preds(all_preds, all_true, num_classes=num_classes)
 
     fold_metrics: Dict[str, Any] = {
         "macro_f1": macro_f1,

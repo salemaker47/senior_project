@@ -219,11 +219,8 @@ def evaluate_fold(
 
         # TN per image — not in the per-image suite (it's huge for sparse masks),
         # but we still need it for accumulating fold-level micro_counts["tn"].
-        # Compute on the binary tensors.
         pred_b = binarize_logits(logits, threshold=threshold)
-        pb = (pred_b > 0.5).bool()
-        yb = (y      > 0.5).bool()
-        tn_b = (~pb & ~yb).sum(dim=(1, 2, 3)).cpu().numpy()
+        tn_b = (~pred_b.bool() & ~y.bool()).sum(dim=(1, 2, 3)).cpu().numpy()
 
         # Save predicted PNGs + assemble rows
         pred_np = pred_b.cpu().numpy().astype(np.uint8)[:, 0]

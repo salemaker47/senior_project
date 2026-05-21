@@ -79,6 +79,4 @@ def build_model(
     )
 
 
-def count_parameters(model: nn.Module) -> int:
-    """Return total trainable parameter count. Used by Enhancement E (training summary)."""
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+from src.train_utils import count_parameters  # noqa: F401 — re-exported for callers

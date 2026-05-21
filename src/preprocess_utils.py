@@ -50,9 +50,8 @@ from src.file_utils import PathLike
 # --------------------------------------------------------------------------- #
 # Constants
 # --------------------------------------------------------------------------- #
-DATASET_NAME            = "figshare"     # legacy alias (kept for old NB01 imports)
-DATASET_NAME_FIGSHARE   = "figshare"
-DATASET_NAME_BRATS2020  = "brats2020"
+DATASET_NAME_FIGSHARE  = "figshare"
+DATASET_NAME_BRATS2020 = "brats2020"
 
 # Tumor-class label space — matches the original figshare encoding so that
 # rows from different datasets concatenate cleanly via tumor_class_id.

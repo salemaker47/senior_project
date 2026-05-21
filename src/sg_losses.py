@@ -5,7 +5,7 @@ Segmentation loss factory. Every loss is selected by NAME so the EXPERIMENT
 dict can swap losses with a single config flag.
 
 Built-in names (case-insensitive):
-    "bce"          torch.nn.BCEWithLogitsLoss
+    "bce" / "bcewithlogits" / "bce_with_logits"   torch.nn.BCEWithLogitsLoss
     "dice"         SMP DiceLoss (mode='binary')
     "focal"        SMP FocalLoss (mode='binary')
     "lovasz"       SMP LovaszLoss (mode='binary')
@@ -75,7 +75,7 @@ class CombinedLoss(nn.Module):
         )
 
     def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        total = 0.0
+        total = logits.new_zeros(())   # scalar tensor on the same device/dtype as input
         for w, loss_fn in zip(self.weights, self.losses):
             total = total + w * loss_fn(logits, target)
         return total

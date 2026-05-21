@@ -35,10 +35,8 @@ import numpy as np
 import pandas as pd
 
 from src.eval_utils import enriched_aggregate, add_mean_std
+from src.cls_data_utils import CLASS_NAMES as _CLASS_NAMES
 from src.cls_metrics import IDX_TO_CLASS
-
-# All labels in canonical order
-_CLASS_NAMES = [IDX_TO_CLASS[i] for i in sorted(IDX_TO_CLASS)]
 
 _HEADLINE_METRICS: List[str] = [
     "macro_f1",
@@ -111,16 +109,14 @@ def aggregate_cv_results_cls(
         result_rows.append(row)
 
         # per-class rows (for cv_by_class)
+        class_counts = s["per_image_df"]["tumor_class"].value_counts()
         for cls in _CLASS_NAMES:
             by_class_rows.append({
                 "experiment":  experiment_name,
                 "fold":        fold,
                 "mask_source": mask_source,
                 "tumor_class": cls,
-                "n_images":    int(
-                    s["per_image_df"]["tumor_class"]
-                    .eq(cls).sum()
-                ),
+                "n_images":    int(class_counts.get(cls, 0)),
                 "f1":          float(m.get(f"f1_{cls}", 0.0)),
                 "precision":   float(m.get(f"precision_{cls}", 0.0)),
                 "recall":      float(m.get(f"recall_{cls}", 0.0)),
@@ -158,7 +154,7 @@ def aggregate_cv_results_cls(
 
     # ---- cv_confusion (summed across all folds) ----
     cms = [s["confusion_matrix"] for s in fold_summaries]
-    cm_sum = sum(cms)  # element-wise, all are np.ndarray (3,3)
+    cm_sum = np.add.reduce(cms)   # element-wise sum; avoids 0 + ndarray coercion
     cv_confusion = aggregate_cv_confusion_from_matrix(cm_sum)
 
     return {

@@ -23,7 +23,7 @@ Layout (mirrors §3 of the project instruction):
                 folds/fold_X_{train,val,test}.csv
         outputs/
             checkpoints/<task>/<dataset>/<exp>/fold_X/{best.ckpt, best_model.pt, experiment_config.json}
-            logs/<task>/<dataset>/<exp>/fold_X/version_0/metrics.csv
+            logs/<task>/<dataset>/<exp>/fold_X/metrics.csv
             figures/<task>/<dataset>/<exp>/fold_X/...
             figures/data_preparation/<dataset>/...
             tables/<task>/<dataset>/<exp>/...
@@ -54,13 +54,6 @@ VALID_TASKS = ("segmentation", "classification")
 # --------------------------------------------------------------------------- #
 # Folder + JSON helpers
 # --------------------------------------------------------------------------- #
-def ensure_dir(path: PathLike) -> Path:
-    """Create directory (and parents) if missing. Returns the Path."""
-    p = Path(path)
-    p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
 def save_json(obj: Any, path: PathLike, indent: int = 2) -> Path:
     """Save a Python object to JSON, creating parent dirs if needed."""
     p = Path(path)
@@ -117,7 +110,6 @@ def project_dirs(root: PathLike) -> Dict[str, Path]:
         "outputs_predictions":  root / "outputs" / "predictions",
         "outputs_figures":      root / "outputs" / "figures",
         "outputs_tables":       root / "outputs" / "tables",
-        "outputs_reports":      root / "outputs" / "reports",
     }
     for p in dirs.values():
         p.mkdir(parents=True, exist_ok=True)
@@ -227,7 +219,7 @@ def experiment_paths(
         "best_model":             ckpt_dir / "best_model.pt",
         "experiment_config_json": ckpt_dir / "experiment_config.json",
         "logs":                   log_dir,
-        "metrics_csv":            log_dir / "version_0" / "metrics.csv",
+        "metrics_csv":            log_dir / "metrics.csv",
         "figures":                fig_dir,
         "tables":                 table_dir,
     }
@@ -409,7 +401,6 @@ def cls_eval_paths(
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     return {
-        "eval_dir":   tables_dir,    # primary output dir (also used for manifests)
-        "tables_dir": tables_dir,
+        "tables_dir":  tables_dir,   # primary output dir (also used for manifests)
         "figures_dir": figures_dir,
     }

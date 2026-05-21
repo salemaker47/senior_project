@@ -37,6 +37,8 @@ from src.sg_data_utils import IMAGENET_MEAN, IMAGENET_STD  # single source of tr
 # Canonical label mapping — order matches the FigShare reference notebook.
 CLASS_TO_IDX: Dict[str, int] = {"meningioma": 0, "glioma": 1, "pituitary": 2}
 IDX_TO_CLASS: Dict[int, str] = {v: k for k, v in CLASS_TO_IDX.items()}
+# Ordered class name list derived from IDX_TO_CLASS; single source of truth.
+CLASS_NAMES: list = [IDX_TO_CLASS[i] for i in sorted(IDX_TO_CLASS)]
 
 
 # --------------------------------------------------------------------------- #
@@ -115,10 +117,11 @@ def extract_patch(
 # --------------------------------------------------------------------------- #
 # Albumentations transforms
 # --------------------------------------------------------------------------- #
-def build_train_transform_cls(image_size: int = 224) -> A.Compose:
+def build_train_transform_cls() -> A.Compose:
     """
     Training augmentation for classification patches.
-    Input: (image_size, image_size, 3) uint8 RGB (already cropped by extract_patch).
+    Input: (target_size, target_size, 3) uint8 RGB (already sized by extract_patch;
+    no A.Resize needed here).
     Mirrors the augmentation used in the FigShare reference notebook.
     """
     return A.Compose([
@@ -134,8 +137,9 @@ def build_train_transform_cls(image_size: int = 224) -> A.Compose:
     ])
 
 
-def build_eval_transform_cls(image_size: int = 224) -> A.Compose:
-    """Validation/test transform: normalize only, no random aug."""
+def build_eval_transform_cls() -> A.Compose:
+    """Validation/test transform: normalize only, no random aug.
+    Patches are already sized by extract_patch; no A.Resize needed."""
     return A.Compose([
         A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
         ToTensorV2(),
@@ -197,6 +201,8 @@ class BrainTumorClsDataset(Dataset):
         return img
 
     def _read_mask(self, path: Path) -> np.ndarray:
+        """Returns {0, 255} uint8 — cv2.findNonZero only needs nonzero values;
+        no loss function consumes this mask directly in the cls pipeline."""
         m = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
         if m is None:
             raise FileNotFoundError(f"could not read mask: {path}")
@@ -259,8 +265,8 @@ def build_dataloaders_cls(
     Build train + val DataLoaders for one classification fold.
     Training always uses mask_source='gt' (GT masks for ROI extraction).
     """
-    train_tf = build_train_transform_cls(image_size=image_size)
-    eval_tf  = build_eval_transform_cls(image_size=image_size)
+    train_tf = build_train_transform_cls()
+    eval_tf  = build_eval_transform_cls()
 
     train_ds = BrainTumorClsDataset(
         train_df, project_root,
@@ -277,8 +283,9 @@ def build_dataloaders_cls(
         padding_frac=padding_frac,
     )
 
-    g = torch.Generator()
+    g = None
     if seed is not None:
+        g = torch.Generator()
         g.manual_seed(seed)
 
     train_loader = DataLoader(
@@ -320,7 +327,7 @@ def build_test_loader_cls(
 
     Default `return_meta=True` so NB08 can key per-image results on `image_id`.
     """
-    eval_tf = build_eval_transform_cls(image_size=image_size)
+    eval_tf = build_eval_transform_cls()
     ds = BrainTumorClsDataset(
         test_df, project_root,
         transform=eval_tf,

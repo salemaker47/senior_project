@@ -21,9 +21,6 @@ from typing import Any, Iterable, Optional
 
 import torch
 
-LRScheduler = Optional[object]   # broad: ReduceLROnPlateau is not a subclass of _LRScheduler
-
-
 # --------------------------------------------------------------------------- #
 # Optimizers
 # --------------------------------------------------------------------------- #
@@ -69,7 +66,7 @@ def get_scheduler(
     name: Optional[str],
     optimizer: torch.optim.Optimizer,
     **kwargs: Any,
-) -> LRScheduler:
+) -> Optional[object]:  # broad: ReduceLROnPlateau is not a subclass of _LRScheduler
     """
     Build a learning-rate scheduler by name.
 
@@ -117,7 +114,7 @@ def get_scheduler(
 
 
 # --------------------------------------------------------------------------- #
-# Helper used by the Lightning module
+# Helpers used by the Lightning modules
 # --------------------------------------------------------------------------- #
 def scheduler_needs_metric(name: Optional[str]) -> bool:
     """
@@ -128,3 +125,30 @@ def scheduler_needs_metric(name: Optional[str]) -> bool:
     if name is None:
         return False
     return name.lower() == "reduce_on_plateau"
+
+
+def build_scheduler_cfg(
+    scheduler,
+    interval: str = "epoch",
+    monitor_metric: Optional[str] = None,
+) -> dict:
+    """
+    Build the Lightning lr_scheduler config dict for configure_optimizers.
+
+    Parameters
+    ----------
+    scheduler       : scheduler object returned by get_scheduler (may be None)
+    interval        : 'epoch' or 'step'
+    monitor_metric  : metric name to pass under 'monitor' when the scheduler
+                      is metric-driven (i.e. ReduceLROnPlateau).  Ignored when
+                      the scheduler does not require a monitored metric.
+
+    Returns a dict suitable for the 'lr_scheduler' key in the Lightning
+    configure_optimizers return value, or None if scheduler is None.
+    """
+    if scheduler is None:
+        return None
+    cfg = {"scheduler": scheduler, "interval": interval, "frequency": 1}
+    if monitor_metric is not None:
+        cfg["monitor"] = monitor_metric
+    return cfg

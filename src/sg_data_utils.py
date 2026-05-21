@@ -189,6 +189,7 @@ class BrainTumorDataset(Dataset):
         return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
     def _read_mask(self, path: Path) -> np.ndarray:
+        """Returns {0, 1} uint8 — values the seg loss functions expect as targets."""
         m = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
         if m is None:
             raise FileNotFoundError(f"could not read mask: {path}")
@@ -251,8 +252,9 @@ def build_dataloaders(
     train_ds = BrainTumorDataset(train_df, project_root, transform=train_tf)
     val_ds   = BrainTumorDataset(val_df,   project_root, transform=eval_tf)
 
-    g = torch.Generator()
+    g = None
     if seed is not None:
+        g = torch.Generator()
         g.manual_seed(seed)
 
     train_loader = DataLoader(

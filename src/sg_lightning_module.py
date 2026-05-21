@@ -22,7 +22,7 @@ import torch.nn as nn
 import pytorch_lightning as pl
 
 from src.sg_metrics import get_smp_stats, get_metric_kind_pairs
-from src.optimizers import get_optimizer, get_scheduler, scheduler_needs_metric
+from src.optimizers import get_optimizer, get_scheduler, scheduler_needs_metric, build_scheduler_cfg
 
 
 class BrainTumorSegModule(pl.LightningModule):
@@ -129,25 +129,19 @@ class BrainTumorSegModule(pl.LightningModule):
         )
         return loss
 
-    def _flush_epoch_buffers(
-        self,
-        tp_buf: list, fp_buf: list, fn_buf: list, tn_buf: list,
-        log_prefix: str,
-    ) -> None:
-        tp = torch.cat(tp_buf); fp = torch.cat(fp_buf)
-        fn = torch.cat(fn_buf); tn = torch.cat(tn_buf)
+    def _flush_val_buffers(self) -> None:
+        tp = torch.cat(self._val_tp); fp = torch.cat(self._val_fp)
+        fn = torch.cat(self._val_fn); tn = torch.cat(self._val_tn)
         for val_name, fn_ in self._metric_pairs.items():
-            name = val_name if log_prefix == "val_" else val_name.replace("val_", log_prefix)
-            on_bar = val_name in ("val_dice", "val_iou") and log_prefix == "val_"
-            self.log(name, fn_(tp, fp, fn, tn), prog_bar=on_bar)
-        tp_buf.clear(); fp_buf.clear(); fn_buf.clear(); tn_buf.clear()
+            on_bar = val_name in ("val_dice", "val_iou")
+            self.log(val_name, fn_(tp, fp, fn, tn), prog_bar=on_bar)
+        self._val_tp.clear(); self._val_fp.clear()
+        self._val_fn.clear(); self._val_tn.clear()
 
     def on_validation_epoch_end(self):
         if not self._val_tp:
             return
-        self._flush_epoch_buffers(
-            self._val_tp, self._val_fp, self._val_fn, self._val_tn, "val_",
-        )
+        self._flush_val_buffers()
 
     # ------------------------------------------------------------------ #
     # Optimizer + scheduler — both registry-driven
@@ -163,15 +157,8 @@ class BrainTumorSegModule(pl.LightningModule):
             optimizer,
             **self.scheduler_kwargs,
         )
-        if scheduler is None:
+        monitor = self.scheduler_monitor if scheduler_needs_metric(self.scheduler_name) else None
+        sched_cfg = build_scheduler_cfg(scheduler, self.scheduler_interval, monitor)
+        if sched_cfg is None:
             return optimizer
-
-        sched_cfg: Dict[str, Any] = {
-            "scheduler": scheduler,
-            "interval": self.scheduler_interval,
-            "frequency": 1,
-        }
-        if scheduler_needs_metric(self.scheduler_name):
-            sched_cfg["monitor"] = self.scheduler_monitor
-
         return {"optimizer": optimizer, "lr_scheduler": sched_cfg}

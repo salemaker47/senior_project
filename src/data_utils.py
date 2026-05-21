@@ -31,6 +31,13 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import (
+    GroupKFold,
+    GroupShuffleSplit,
+    KFold,
+    StratifiedGroupKFold,
+    train_test_split,
+)
 
 from src.file_utils import PathLike
 
@@ -128,15 +135,6 @@ def metadata_summary(df: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 # Patient-level fold splitting (group + stratify by patient)
 # --------------------------------------------------------------------------- #
-from sklearn.model_selection import (
-    GroupKFold,
-    GroupShuffleSplit,
-    KFold,
-    StratifiedGroupKFold,
-    train_test_split,
-)
-
-
 def create_patient_folds(
     metadata_df: pd.DataFrame,
     n_splits: int = 5,

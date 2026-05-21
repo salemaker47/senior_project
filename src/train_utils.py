@@ -289,10 +289,10 @@ def build_trainer(
     metrics.csv we can replot or aggregate later.
 
     `precision="auto"` selects "16-mixed" on GPU and "32-true" on CPU.
-    Logs land at log_dir/version_0/metrics.csv (no lightning_logs subfolder).
+    Logs land directly at log_dir/metrics.csv (no version subfolder).
     """
     Path(log_dir).mkdir(parents=True, exist_ok=True)
-    logger = CSVLogger(save_dir=str(log_dir), name="", version=0)
+    logger = CSVLogger(save_dir=str(log_dir), name="", version="")
 
     if precision == "auto":
         precision = "16-mixed" if torch.cuda.is_available() else "32-true"
@@ -309,6 +309,14 @@ def build_trainer(
         enable_progress_bar=enable_progress_bar,
         num_sanity_val_steps=0,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Model helpers
+# --------------------------------------------------------------------------- #
+def count_parameters(model) -> int:
+    """Total trainable parameter count. Used by Enhancement E (training summary)."""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 # --------------------------------------------------------------------------- #
@@ -357,3 +365,69 @@ def export_plain_state_dict(
     }
     torch.save(out, dst)
     return dst
+
+
+# --------------------------------------------------------------------------- #
+# Metrics CSV consolidation
+# --------------------------------------------------------------------------- #
+def consolidate_metrics_csv(
+    metrics_csv_path: PathLike,
+    out_path: Optional[PathLike] = None,
+) -> Any:  # returns pd.DataFrame; avoid hard import at module level
+    """
+    Rewrite Lightning CSVLogger's raw metrics.csv (many sparse rows per epoch)
+    into a tidy one-row-per-epoch table. Overwrites the file in-place unless
+    out_path is given.
+
+    Lightning logs each metric group (lr, train_loss, val metrics) as a
+    separate sparse row within the same epoch. This function:
+      1. Forward-fills the lr column so epoch rows always carry the current lr
+      2. Drops pure lr-step rows (epoch=NaN)
+      3. Groups remaining rows by epoch, taking last non-NaN per column
+      4. Keeps only the semantically meaningful columns:
+             epoch, lr, train_loss, val_loss, val_dice, val_iou  (seg)
+             epoch, lr, train_loss, val_loss, val_macro_f1       (cls)
+      5. Renames 'lr-<OptimizerClass>' → 'lr'
+
+    Returns the consolidated DataFrame.
+    """
+    import pandas as pd
+
+    raw = pd.read_csv(metrics_csv_path)
+    if raw.empty:
+        return raw
+
+    # Identify LearningRateMonitor column(s): named "lr-<OptimizerClass>"
+    lr_cols = [c for c in raw.columns if c.startswith("lr-") or c == "lr"]
+
+    # Forward-fill lr so each epoch row inherits the current learning rate
+    # even when lr was logged on a separate step-row with epoch=NaN.
+    if lr_cols:
+        raw[lr_cols] = raw[lr_cols].ffill()
+
+    # Keep only epoch-bearing rows; drop pure lr-step rows and test rows.
+    epoch_rows = raw.dropna(subset=["epoch"]).copy()
+    if epoch_rows.empty:
+        return epoch_rows
+    epoch_rows["epoch"] = epoch_rows["epoch"].astype(int)
+
+    # Merge by epoch: last non-NaN value wins per column.
+    clean = epoch_rows.groupby("epoch", as_index=False).last()
+
+    # Select and order the meaningful columns (skip step, test_*, etc.)
+    want = ["epoch"] + lr_cols
+    for c in ["train_loss", "val_loss", "val_dice", "val_iou",
+              "val_macro_f1", "val_accuracy"]:
+        if c in clean.columns:
+            want.append(c)
+    clean = clean[[c for c in want if c in clean.columns]]
+
+    # Rename lr-Adam / lr-AdamW / etc. → lr for readability
+    if len(lr_cols) == 1 and lr_cols[0] != "lr":
+        clean = clean.rename(columns={lr_cols[0]: "lr"})
+
+    out = Path(out_path if out_path is not None else metrics_csv_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    clean.to_csv(out, index=False, float_format="%.6f")
+
+    return clean
