@@ -262,38 +262,45 @@ def evaluate_fold(
 
     per_image_df = pd.DataFrame(rows)
 
-    # ---- §8 per-fold manifest ----
-    manifest = {
-        "seg_experiment_name": experiment_name,
-        "task":                "segmentation",
-        "dataset":             dataset,
-        "split_scheme":        split_scheme,
-        "fold":                int(fold),
-        "checkpoint_path":     str(Path(checkpoint_path)),
-        "checkpoint_sha256":   sha256_of_file(checkpoint_path),
-        "test_csv_path":       str(Path(test_csv_path)),
-        "test_csv_sha256":     sha256_of_file(test_csv_path),
-        "n_predictions":       int(len(per_image_df)),
-        "image_size":          int(image_size),
-        "threshold":           float(threshold),
-        "mask_format":         "binary_uint8_0_255",
-        "model_name":          model_name,
-        "encoder_weights":     encoder_weights,
-        "generated_at":        datetime.now(timezone.utc).isoformat(),
-    }
-    manifest_path = predictions_dir / "manifest.json"
-    save_json(manifest, manifest_path)
+    # ---- §8 per-fold manifest (only written when predictions are saved) ----
+    # Manifests are the integrity contract for cls Eval B, which only applies to
+    # figshare.  When save_pngs=False (e.g. brats2020), no PNGs exist, so writing
+    # a manifest claiming n_predictions > 0 would be misleading.
+    manifest_path: Optional[Path] = None
+    manifest: Optional[Dict[str, Any]] = None
 
-    # Self-validate: verify the manifest matches the files on disk right now.
-    # If this raises, we wrote something inconsistent — surface it loudly.
-    verify_seg_predictions_match(
-        root=project_root,
-        dataset=dataset,
-        seg_experiment_name=experiment_name,
-        fold=int(fold),
-        checkpoint_path=checkpoint_path,
-        test_csv_path=test_csv_path,
-    )
+    if save_pngs:
+        manifest = {
+            "seg_experiment_name": experiment_name,
+            "task":                "segmentation",
+            "dataset":             dataset,
+            "split_scheme":        split_scheme,
+            "fold":                int(fold),
+            "checkpoint_path":     str(Path(checkpoint_path)),
+            "checkpoint_sha256":   sha256_of_file(checkpoint_path),
+            "test_csv_path":       str(Path(test_csv_path)),
+            "test_csv_sha256":     sha256_of_file(test_csv_path),
+            "n_predictions":       int(len(per_image_df)),
+            "image_size":          int(image_size),
+            "threshold":           float(threshold),
+            "mask_format":         "binary_uint8_0_255",
+            "model_name":          model_name,
+            "encoder_weights":     encoder_weights,
+            "generated_at":        datetime.now(timezone.utc).isoformat(),
+        }
+        manifest_path = predictions_dir / "manifest.json"
+        save_json(manifest, manifest_path)
+
+        # Self-validate: verify the manifest matches the files on disk right now.
+        # If this raises, we wrote something inconsistent — surface it loudly.
+        verify_seg_predictions_match(
+            root=project_root,
+            dataset=dataset,
+            seg_experiment_name=experiment_name,
+            fold=int(fold),
+            checkpoint_path=checkpoint_path,
+            test_csv_path=test_csv_path,
+        )
 
     return {
         "per_image_df":  per_image_df,
