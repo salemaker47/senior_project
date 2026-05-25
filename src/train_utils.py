@@ -406,6 +406,8 @@ def consolidate_metrics_csv(
         raw[lr_cols] = raw[lr_cols].ffill()
 
     # Keep only epoch-bearing rows; drop pure lr-step rows and test rows.
+    if "epoch" not in raw.columns:
+        return raw  # metrics.csv has no epoch column — nothing to consolidate
     epoch_rows = raw.dropna(subset=["epoch"]).copy()
     if epoch_rows.empty:
         return epoch_rows

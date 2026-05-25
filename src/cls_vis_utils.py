@@ -48,7 +48,7 @@ import numpy as np
 import pandas as pd
 
 from src.file_utils import PathLike
-from src.cls_data_utils import CLASS_NAMES as _DEFAULT_CLASS_NAMES
+from src.cls_data_utils import CLASS_NAMES as _DEFAULT_CLASS_NAMES, extract_patch
 
 # Colour palette for Eval A / Eval B bars
 _COLOR_A = "#4878CF"   # blue
@@ -449,8 +449,6 @@ def plot_sample_patches(
     save_path       : optional output path.
     show            : if True, call plt.show().
     """
-    from src.cls_data_utils import extract_patch, IDX_TO_CLASS
-
     project_root = Path(project_root)
     rng = np.random.RandomState(random_state)
 

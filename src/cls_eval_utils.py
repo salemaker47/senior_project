@@ -36,7 +36,6 @@ import pandas as pd
 
 from src.eval_utils import enriched_aggregate, add_mean_std
 from src.cls_data_utils import CLASS_NAMES as _CLASS_NAMES
-from src.cls_metrics import IDX_TO_CLASS
 
 _HEADLINE_METRICS: List[str] = [
     "macro_f1",
@@ -94,8 +93,8 @@ def aggregate_cv_results_cls(
         n_images = int(len(s["per_image_df"]))
 
         row: Dict[str, Any] = {
-            "experiment": experiment_name,
-            "fold":       fold,
+            "experiment_name": experiment_name,
+            "fold":            fold,
             "mask_source": mask_source,
             "n_images":   n_images,
         }
@@ -112,8 +111,8 @@ def aggregate_cv_results_cls(
         class_counts = s["per_image_df"]["tumor_class"].value_counts()
         for cls in _CLASS_NAMES:
             by_class_rows.append({
-                "experiment":  experiment_name,
-                "fold":        fold,
+                "experiment_name": experiment_name,
+                "fold":            fold,
                 "mask_source": mask_source,
                 "tumor_class": cls,
                 "n_images":    int(class_counts.get(cls, 0)),

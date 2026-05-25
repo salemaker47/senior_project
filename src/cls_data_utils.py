@@ -37,7 +37,7 @@ from src.sg_data_utils import IMAGENET_MEAN, IMAGENET_STD  # single source of tr
 # Canonical label mapping — order matches the FigShare reference notebook.
 CLASS_TO_IDX: Dict[str, int] = {"meningioma": 0, "glioma": 1, "pituitary": 2}
 IDX_TO_CLASS: Dict[int, str] = {v: k for k, v in CLASS_TO_IDX.items()}
-# Ordered class name list derived from IDX_TO_CLASS; single source of truth.
+# Ordered class name list derived from IDX_TO_CLASS; do not redefine elsewhere.
 CLASS_NAMES: list = [IDX_TO_CLASS[i] for i in sorted(IDX_TO_CLASS)]
 
 
@@ -233,6 +233,13 @@ class BrainTumorClsDataset(Dataset):
             patch_tensor = torch.from_numpy(patch).permute(2, 0, 1).float() / 255.0
 
         tumor_class = str(row.get("tumor_class", ""))
+        if tumor_class not in CLASS_TO_IDX:
+            import warnings
+            warnings.warn(
+                f"Unknown tumor_class {tumor_class!r} for image_id={image_id!r}. "
+                f"Expected one of {list(CLASS_TO_IDX)}. Defaulting to 0.",
+                RuntimeWarning, stacklevel=2,
+            )
         label = CLASS_TO_IDX.get(tumor_class, 0)
         label_tensor = torch.tensor(label, dtype=torch.long)
 

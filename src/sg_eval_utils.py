@@ -142,7 +142,7 @@ def summarize_fold_results(
         "per_image"     -- per_image_df with experiment/fold prepended
     """
     # Fold-level row
-    fold_row = {"experiment": experiment_name, "fold": int(fold)}
+    fold_row = {"experiment_name": experiment_name, "fold": int(fold)}
     fold_row.update(_fold_overall_row(per_image_df, micro_counts))
     fold_overall = pd.DataFrame([fold_row])
 
@@ -160,7 +160,7 @@ def summarize_fold_results(
                 - sub["false_negative_pixels"].sum()
             ),
         }
-        row = {"experiment": experiment_name, "fold": int(fold), "tumor_class": cls}
+        row = {"experiment_name": experiment_name, "fold": int(fold), "tumor_class": cls}
         row.update(_fold_overall_row(sub, class_counts))
         by_class_rows.append(row)
     fold_by_class = pd.DataFrame(by_class_rows).sort_values("tumor_class").reset_index(drop=True)
@@ -169,8 +169,8 @@ def summarize_fold_results(
     per_image_out = per_image_df.copy()
     if "fold" not in per_image_out.columns:
         per_image_out.insert(0, "fold", int(fold))
-    if "experiment" not in per_image_out.columns:
-        per_image_out.insert(0, "experiment", experiment_name)
+    if "experiment_name" not in per_image_out.columns:
+        per_image_out.insert(0, "experiment_name", experiment_name)
 
     return {
         "fold_overall":  fold_overall,
