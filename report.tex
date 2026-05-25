@@ -1,0 +1,941 @@
+\documentclass[12pt,a4paper]{article}
+
+% ─── Packages ─────────────────────────────────────────────────────────────────
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{tocloft}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+% ─── Colours ──────────────────────────────────────────────────────────────────
+\definecolor{codeblue}{rgb}{0.13,0.29,0.53}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codegreen}{rgb}{0.0,0.5,0.0}
+\definecolor{backcolor}{rgb}{0.97,0.97,0.97}
+\definecolor{linkblue}{rgb}{0.08,0.37,0.65}
+
+% ─── Hyperref ─────────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=linkblue,
+  urlcolor=linkblue,
+  citecolor=linkblue,
+  pdftitle={Brain Tumour Analysis Pipeline -- Technical Report},
+  pdfauthor={Salem Aker},
+}
+
+% ─── Code listings ────────────────────────────────────────────────────────────
+\lstdefinestyle{pythonstyle}{
+  backgroundcolor=\color{backcolor},
+  commentstyle=\color{codegreen}\itshape,
+  keywordstyle=\color{codeblue}\bfseries,
+  stringstyle=\color{orange!80!black},
+  basicstyle=\ttfamily\small,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=none,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=4,
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{gray!40},
+  language=Python,
+}
+\lstset{style=pythonstyle}
+
+% ─── Header / footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small Brain Tumour Analysis Pipeline}
+\lhead{\small Technical Report}
+\rfoot{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ─── Section formatting ───────────────────────────────────────────────────────
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\itshape}{\thesubsubsection}{0.6em}{}
+
+% ─── Table helpers ────────────────────────────────────────────────────────────
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% ─── Misc ─────────────────────────────────────────────────────────────────────
+\setlength{\parskip}{0.55em}
+\setlength{\parindent}{0pt}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+% ══════════════════════════════════════════════════════════════════════════════
+
+% ─── Title page ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\huge\bfseries Brain Tumour Analysis Pipeline\par}
+  \vspace{0.5cm}
+  {\Large\itshape Technical Report\par}
+  \vspace{2cm}
+  {\large Salem Aker\par}
+  \vspace{0.4cm}
+  {\normalsize Senior Project\par}
+  \vspace{0.4cm}
+  {\normalsize May 2026\par}
+  \vfill
+  \rule{\textwidth}{0.5pt}
+  \vspace{0.3cm}
+  {\small
+    A complete machine-learning pipeline for binary tumour segmentation and
+    multi-class tumour classification on brain MRI, supporting two datasets
+    (\texttt{figshare}, \texttt{brats2020}) and two cross-validation schemes,
+    implemented as 21 Python modules and 10 Colab notebooks.
+  }
+\end{titlepage}
+
+% ─── Table of contents ────────────────────────────────────────────────────────
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+% ══════════════════════════════════════════════════════════════════════════════
+
+This report describes the complete software architecture and data-flow of a
+two-task brain MRI analysis pipeline.  The pipeline operates on greyscale MRI
+slices and trains models to:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Segment} the tumour region --- produce a binary pixel-level mask
+    (background $= 0$, tumour $= 1$).
+  \item \textbf{Classify} the tumour type --- assign one of three labels
+    (\textit{meningioma}, \textit{glioma}, \textit{pituitary}) from a patch
+    centred on the tumour.
+\end{enumerate}
+
+The two tasks are connected: classification requires a mask to crop the tumour
+patch, so segmentation predictions are used as inputs for the
+\emph{Eval B} classification variant, which quantifies the deployment cost of
+imperfect region-of-interest localisation.
+
+All experiments use 5-fold cross-validation.  Two split schemes are supported:
+\textit{image-level} (plain \texttt{KFold}; reproduces the FigShare reference
+benchmark) and \textit{patient-level} (\texttt{StratifiedGroupKFold};
+methodologically correct, prevents patient leakage).
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Datasets}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{table}[h]
+  \centering
+  \caption{Supported datasets.}
+  \label{tab:datasets}
+  \begin{tabular}{L{3cm} L{3cm} L{2.5cm} L{3cm} L{3cm}}
+    \toprule
+    \textbf{Identifier} & \textbf{Source} & \textbf{Size} & \textbf{Classes} &
+    \textbf{Tasks} \\
+    \midrule
+    \texttt{figshare}
+      & KaggleHub \newline \texttt{ashkhagan/figshare-brain-tumor-dataset}
+      & 3{,}064 images \newline 233 patients
+      & meningioma, glioma, pituitary
+      & Segmentation + Classification \\
+    \addlinespace
+    \texttt{brats2020}
+      & KaggleHub \newline \texttt{awsaf49/brats2020-training-data}
+      & $\approx$57{,}000 slices \newline 369 patients
+      & glioma only
+      & Segmentation only \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Raw files for \texttt{figshare} are MATLAB \texttt{.mat} archives; raw files for
+\texttt{brats2020} are HDF5 \texttt{.h5} archives containing 3-D FLAIR volumes
+with whole-tumour masks.  Adding a new dataset requires only dropping raw files
+into \texttt{data/<dataset>/raw/}, running Notebook NB01 with
+\texttt{DATASET = "<dataset>"}, and running NB02 for splits --- no source-code
+edits are needed.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Project Architecture}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{Three-location model}
+
+The project operates across three storage locations simultaneously:
+
+\begin{description}[leftmargin=2.5em]
+  \item[GitHub] Contains all source code (\texttt{src/}, \texttt{configs/},
+    \texttt{notebooks/}).  Single source of truth for reproducibility.
+  \item[Google Drive] Canonical storage for data and outputs (checkpoints, logs,
+    predictions, tables, figures).  Large, regenerable artefacts never version-controlled.
+  \item[Colab runtime] Ephemeral fast SSD used during training.  Data is copied
+    from Drive at the start of a run; outputs are synced back to Drive at the end.
+\end{description}
+
+Training writes are never directed to Drive FUSE during a run (write throughput
+over FUSE degrades with model checkpointing).  The helper
+\texttt{notebook\_setup.py} consolidates the three-stage workflow:
+\texttt{setup\_environment} $\to$ \texttt{copy\_to\_local} $\to$
+\texttt{sync\_outputs\_to\_drive}.
+
+\subsection{Folder layout}
+
+\begin{lstlisting}[language={}, caption={Canonical directory tree (abbreviated).}]
+Senior_Project/
+  data/
+    figshare/
+      raw/                           # source files (.mat)
+      processed/
+        images/<image_id>.png        # 512x512 greyscale PNG
+        masks/<image_id>.png         # binary mask PNG
+        metadata.csv                 # image_id, patient_id, paths, class
+        preprocessing_config.json
+      splits/
+        image_level/
+          cv_split_config.json
+          cv_fold_summary.csv
+          folds/fold_{1..5}_{train,val,test}.csv
+        patient_level/               # same layout
+    brats2020/                       # same layout
+  outputs/
+    checkpoints/<task>/<dataset>/<exp>/fold_k/{best.ckpt, best_model.pt}
+    logs/<task>/<dataset>/<exp>/fold_k/metrics.csv
+    predictions/segmentation/<dataset>/<seg_exp>/
+      fold_k/{<image_id>.png, manifest.json}
+      prediction_manifest.json
+    tables/<task>/<dataset>/<exp>/
+    figures/<task>/<dataset>/<exp>/
+  src/                               # 21 Python modules
+  configs/seg/reference_experiments.py
+  configs/cls/reference_experiments.py
+  notebooks/setups/, segmentation/, classification/
+\end{lstlisting}
+
+\subsection{Path convention axes}
+
+Every output artefact is located by three orthogonal identifiers:
+(1)~\textbf{task} (\texttt{segmentation} or \texttt{classification}),
+(2)~\textbf{dataset} (\texttt{figshare}, \texttt{brats2020}, \ldots), and
+(3)~\textbf{experiment\_name} (e.g.\ \texttt{03\_dicebce\_image\_level}).
+This makes glob queries natural:
+\texttt{outputs/checkpoints/segmentation/figshare/*/} retrieves all segmentation
+experiments on figshare.
+
+\subsection{Source module layout}
+
+The 21 \texttt{src/} files follow a naming convention: unprefixed files are
+shared across tasks; \texttt{sg\_} prefix denotes segmentation-only; \texttt{cls\_}
+prefix denotes classification-only.
+
+\begin{longtable}{C{0.5cm} L{4.5cm} C{1.5cm} L{7.5cm}}
+  \caption{Source module catalogue.} \label{tab:modules} \\
+  \toprule
+  \textbf{\#} & \textbf{File} & \textbf{Scope} & \textbf{Responsibility} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{\#} & \textbf{File} & \textbf{Scope} & \textbf{Responsibility} \\
+  \midrule
+  \endhead
+  \midrule
+  \multicolumn{4}{r}{\small\itshape continued on next page} \\
+  \endfoot
+  \bottomrule
+  \endlastfoot
+  1  & \texttt{file\_utils.py}         & shared & Path helpers, JSON I/O, SHA-256 hashing, prediction manifests, \texttt{cls\_eval\_paths} \\
+  2  & \texttt{notebook\_setup.py}      & shared & Drive mount, repo clone/pull, \texttt{copy\_to\_local}, \texttt{sync\_outputs\_to\_drive} \\
+  3  & \texttt{preprocess\_utils.py}    & shared & \texttt{.mat} $\to$ PNG (figshare), \texttt{.h5} $\to$ PNG (brats2020), dispatcher \\
+  4a & \texttt{vis\_utils.py}           & shared & \texttt{load\_grayscale\_png}, \texttt{load\_binary\_mask\_png}, \texttt{show\_class\_examples} \\
+  4b & \texttt{sg\_vis\_utils.py}       & seg    & Triplet / overlay / 4-panel prediction figures \\
+  5a & \texttt{data\_utils.py}          & shared & Metadata loading, fold splitting, leakage verification, CSV persistence \\
+  5b & \texttt{sg\_data\_utils.py}      & seg    & \texttt{BrainTumorDataset}, Albumentations transforms, DataLoader builders \\
+  6a & \texttt{eval\_utils.py}          & shared & \texttt{enriched\_aggregate}, \texttt{build\_fold\_summary}, \texttt{add\_mean\_std} \\
+  6b & \texttt{sg\_eval\_utils.py}      & seg    & Per-fold and cross-fold metric aggregation; per-patient aggregation \\
+  7  & \texttt{sg\_metrics.py}          & seg    & Dice, IoU, SMP-stats accumulation, per-image metric suite \\
+  8  & \texttt{sg\_losses.py}           & seg    & BCE, Dice, Focal, Lovász, Dice+BCE, Dice+Focal, generic combo \\
+  9  & \texttt{sg\_models.py}           & seg    & SMP model registry (U-Net ResNet34, U-Net++ EfficientNet-B4, \ldots) \\
+  10 & \texttt{optimizers.py}           & shared & Adam, AdamW, SGD, RMSProp; schedulers: ReduceLROnPlateau, cosine, step, \ldots \\
+  11 & \texttt{train\_utils.py}         & shared & Seeding, repro metadata, callbacks, Lightning Trainer, checkpoint export \\
+  12 & \texttt{sg\_lightning\_module.py}& seg    & \texttt{BrainTumorSegModule}: train/val/test steps, micro-metric accumulation \\
+  13 & \texttt{sg\_test\_utils.py}      & seg    & Model loading, batched evaluation, PNG saving, §8 prediction manifests \\
+  14 & \texttt{cls\_data\_utils.py}     & cls    & Patch extraction, \texttt{BrainTumorClsDataset}, cls transforms, DataLoaders \\
+  15 & \texttt{cls\_models.py}          & cls    & \texttt{timm} model registry: ResNet-50, EfficientNet-B0/B4, ViT-Small/16 \\
+  16 & \texttt{cls\_losses.py}          & cls    & Cross-entropy, label-smoothed CE, focal CE \\
+  17 & \texttt{cls\_metrics.py}         & cls    & Macro-F1, accuracy, per-class metrics, confusion matrix \\
+  18 & \texttt{cls\_lightning\_module.py}& cls   & \texttt{BrainTumorClsModule}: train/val steps, macro-F1 accumulation \\
+  19 & \texttt{cls\_test\_utils.py}     & cls    & Cls model loading, \texttt{evaluate\_fold\_cls} (Eval A + B, per-fold tables) \\
+  20 & \texttt{cls\_eval\_utils.py}     & cls    & Cross-fold classification aggregation, confusion-matrix aggregation \\
+  21 & \texttt{cls\_vis\_utils.py}      & cls    & Confusion pair, per-class F1 bars, Eval A vs B gap, sample patches \\
+\end{longtable}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Registry Pattern}
+% ══════════════════════════════════════════════════════════════════════════════
+
+All variable components (models, losses, optimisers, schedulers, augmentations)
+are selected by a string name stored in the \texttt{EXPERIMENT} dictionary.
+Adding a new variant requires a single \texttt{if n == "new\_name":} branch in
+the relevant registry module --- existing branches are never modified, guaranteeing
+old experiments reproduce byte-for-byte.
+
+The canonical recipes are defined in
+\texttt{configs/seg/reference\_experiments.py} and
+\texttt{configs/cls/reference\_experiments.py}.
+Notebooks call \texttt{get\_experiment(recipe, dataset, split\_scheme, fold)}
+rather than constructing the dictionary by hand:
+
+\begin{lstlisting}[caption={Composing an EXPERIMENT dict via the recipe API.}]
+from configs.seg.reference_experiments import get_experiment, REFERENCE_RECIPES
+
+EXPERIMENT = get_experiment(
+    "07_unetpp_effb4_dicebce",   # recipe key
+    dataset="figshare",
+    split_scheme="image_level",
+    fold=1,
+)
+# EXPERIMENT["name"] == "07_unetpp_effb4_dicebce_image_level"
+# EXPERIMENT["model_name"] == "smp_unetpp_efficientnetb4"
+# EXPERIMENT["loss_name"] == "dice_bce"
+\end{lstlisting}
+
+The \texttt{EXPERIMENT} dict is the single source of truth for one run.  It is
+also written verbatim to
+\texttt{outputs/checkpoints/<task>/<dataset>/<exp>/fold\_k/experiment\_config.json}
+together with reproducibility metadata (git SHA, library versions, GPU info).
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Data Preparation and Splitting (NB01, NB02)}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{Preprocessing (NB01)}
+
+\textbf{figshare.}  Each \texttt{.mat} file encodes one patient study with
+multiple MRI slices and corresponding tumour masks.  \texttt{preprocess\_utils.py}
+extracts each (image, mask) pair, normalises pixel values, and writes two
+greyscale PNG files --- one 512$\times$512 image and one binary mask --- under
+\texttt{data/figshare/processed/\{images,masks\}/}.  A \texttt{metadata.csv}
+row is written for each slice with columns
+\texttt{image\_id, patient\_id, image\_path, mask\_path, tumor\_class, dataset}.
+
+\textbf{brats2020.}  The \texttt{.h5} files contain 3-D FLAIR volumes and
+whole-tumour segmentation labels.  The converter selects axial slices that
+contain at least one foreground pixel, converts the FLAIR channel to 8-bit
+greyscale, and binarises the label map.  The resulting flat dataset has
+$\approx$57{,}000 slices, all labelled \texttt{glioma}.
+
+\subsection{Cross-validation splitting (NB02)}
+
+\texttt{data\_utils.py} exposes two splitting strategies:
+
+\begin{description}[leftmargin=2em]
+  \item[Patient-level (\texttt{patient\_level})]
+    \texttt{StratifiedGroupKFold} with \texttt{patient\_id} as the group key.
+    Patients never span train and test within any fold.  Falls back to a
+    patient-shuffled \texttt{GroupKFold} for single-class datasets (e.g.\
+    brats2020) where stratification is undefined.
+
+  \item[Image-level (\texttt{image\_level})]
+    Plain \texttt{KFold(shuffle=True, random\_state=42)}, identical to the
+    FigShare reference notebook.  Images from the same patient can appear in
+    both train and test (intentionally leaky, for benchmark reproduction only).
+\end{description}
+
+For each fold $k$, the train pool is further split into a proper training set
+and a validation set by a grouped or ungrouped hold-out:
+\texttt{GroupShuffleSplit} (patient-level, $\approx$11\% val) or
+\texttt{train\_test\_split} (image-level, 15\% val).
+Leakage is verified by \texttt{verify\_no\_patient\_leakage} before any CSV is
+written.
+
+Each scheme produces the following files under
+\texttt{data/<dataset>/splits/<scheme>/folds/}:
+\texttt{fold\_k\_train.csv}, \texttt{fold\_k\_val.csv}, \texttt{fold\_k\_test.csv}.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Segmentation Pipeline}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{Data flow (training)}
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Load CSV.}  NB03 reads the fold CSV; \texttt{BrainTumorDataset}
+    resolves each row's \texttt{image\_path} and \texttt{mask\_path} relative
+    to \texttt{PROJECT\_ROOT}.
+
+  \item \textbf{Read image.}  \texttt{cv2.imread(..., GRAYSCALE)} $\to$
+    \texttt{cv2.cvtColor(GRAY2RGB)} produces a 3-channel image suitable for
+    ImageNet-pretrained encoders.
+
+  \item \textbf{Read mask.}  \texttt{cv2.imread(..., GRAYSCALE)} $\to$
+    \texttt{(pixel > 127).astype(uint8)} gives a $\{0,1\}$ binary mask.
+
+  \item \textbf{Augment (train only).}  An Albumentations \texttt{Compose}
+    pipeline applies the transforms specified by
+    \texttt{EXPERIMENT["augmentation\_strength"]} (Table~\ref{tab:aug}).
+
+  \item \textbf{Normalise.}  \texttt{A.Normalize(IMAGENET\_MEAN, IMAGENET\_STD)}
+    + \texttt{ToTensorV2} produces a \texttt{float32 [3, 256, 256]} image
+    tensor and a \texttt{float32 [1, 256, 256]} mask tensor.
+\end{enumerate}
+
+\begin{table}[h]
+  \centering
+  \caption{Augmentation strength presets.}
+  \label{tab:aug}
+  \begin{tabular}{L{3cm} L{10cm}}
+    \toprule
+    \textbf{Strength} & \textbf{Transforms} \\
+    \midrule
+    \texttt{none}      & Normalise only (no random augmentation) \\
+    \texttt{light}     & HorizontalFlip, small Affine ($\pm$5\%), RandomBrightnessContrast \\
+    \texttt{default}   & HorizontalFlip, Affine ($\pm$6.25\%, rotate $\pm$15\textdegree), ElasticTransform, BrightnessContrast, GaussianBlur, GaussNoise \\
+    \texttt{reference} & Matches the FigShare reference notebook exactly (used by all 7 §13 reproduction experiments) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Model architecture}
+
+All segmentation models are built through \texttt{sg\_models.build\_model} using
+the \texttt{segmentation\_models\_pytorch} (SMP) library.  Models output raw
+logits (\texttt{activation=None}) to decouple the loss choice from the
+architecture.  Table~\ref{tab:seg_models} lists the available architectures.
+
+\begin{table}[h]
+  \centering
+  \caption{Available segmentation models.}
+  \label{tab:seg_models}
+  \begin{tabular}{L{5.5cm} L{3.5cm} L{5cm}}
+    \toprule
+    \textbf{Registry key} & \textbf{Architecture} & \textbf{Notes} \\
+    \midrule
+    \texttt{smp\_unet\_resnet34}         & U-Net / ResNet-34    & Default; exps 01--06 \\
+    \texttt{smp\_unet\_resnet50}         & U-Net / ResNet-50    & \\
+    \texttt{smp\_unetpp\_efficientnetb4} & U-Net++ / EfficientNet-B4 & Exp 07; batch\_size 6 \\
+    \texttt{smp\_unetpp\_resnet34}       & U-Net++ / ResNet-34  & \\
+    \texttt{smp\_resunet\_resnet34}      & Linknet / ResNet-34  & Closest SMP residual U-shape \\
+    \texttt{smp\_manet\_resnet34}        & MA-Net / ResNet-34   & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Loss functions}
+
+Loss functions are built by \texttt{sg\_losses.get\_loss(name, **kwargs)}.
+All operate on raw logits.
+
+\begin{table}[h]
+  \centering
+  \caption{Available segmentation losses.}
+  \label{tab:losses}
+  \begin{tabular}{L{3.5cm} L{10.5cm}}
+    \toprule
+    \textbf{Name} & \textbf{Description} \\
+    \midrule
+    \texttt{bce}        & \texttt{nn.BCEWithLogitsLoss} (optional \texttt{pos\_weight}) \\
+    \texttt{dice}       & SMP \texttt{DiceLoss} in binary mode, with logit input \\
+    \texttt{focal}      & SMP \texttt{FocalLoss} in binary mode ($\alpha=0.25$, $\gamma=2.0$ by default) \\
+    \texttt{lovasz}     & SMP \texttt{LovaszLoss} (surrogate for IoU optimisation) \\
+    \texttt{dice\_bce}  & $w_\text{BCE}\,\mathcal{L}_\text{BCE} + w_\text{Dice}\,\mathcal{L}_\text{Dice}$ \\
+    \texttt{dice\_focal}& $w_\text{Focal}\,\mathcal{L}_\text{Focal} + w_\text{Dice}\,\mathcal{L}_\text{Dice}$ \\
+    \texttt{combo}      & Generic weighted sum of any named components \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The Dice loss is defined as:
+\begin{equation}
+  \mathcal{L}_\text{Dice} = 1 - \frac{2\sum_i p_i\,t_i + \epsilon}
+                                     {\sum_i p_i + \sum_i t_i + \epsilon}
+\end{equation}
+where $p_i = \sigma(\text{logit}_i)$, $t_i \in \{0,1\}$ is the ground-truth mask,
+and $\epsilon = 1$ prevents division by zero on empty masks.
+
+\subsection{Optimisers and schedulers}
+
+\texttt{optimizers.py} provides a registry for:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Optimisers:} Adam, AdamW, SGD, RMSProp.
+  \item \textbf{Schedulers:} ReduceLROnPlateau, CosineAnnealing,
+    CosineAnnealingWarmRestarts, StepLR, MultiStepLR, ExponentialLR, or none.
+\end{itemize}
+
+The default configuration for all 7 §13 reference experiments is Adam at
+$\text{lr}=10^{-4}$ with ReduceLROnPlateau (factor $0.1$, patience 5,
+$\text{min\_lr}=10^{-7}$, monitoring \texttt{val\_loss}).
+
+\subsection{Training loop (BrainTumorSegModule)}
+
+\texttt{sg\_lightning\_module.BrainTumorSegModule} wraps the model in a
+PyTorch Lightning \texttt{LightningModule}.  The key design choices are:
+
+\begin{description}[leftmargin=2em]
+  \item[Micro metric accumulation.]
+    Rather than averaging per-batch Dice scores (which gives incorrect micro
+    values), the module accumulates per-batch SMP statistics tensors
+    $(tp, fp, fn, tn)$ across the epoch and computes the global pooled score
+    once at \texttt{on\_validation\_epoch\_end} and \texttt{on\_test\_epoch\_end}:
+    \begin{equation}
+      \text{Dice}_\text{micro} = \frac{2\,TP + \epsilon}{2\,TP + FP + FN + \epsilon}
+    \end{equation}
+
+  \item[Callbacks.]  \texttt{train\_utils.build\_callbacks} assembles:
+    ModelCheckpoint (best on \texttt{val\_dice}), EarlyStopping
+    (patience from \texttt{EXPERIMENT}), LearningRateMonitor,
+    \texttt{TrainingTimingCallback} (wall-clock + peak GPU memory), and
+    \texttt{EpochSummaryPrinter} (one persistent log line per epoch).
+
+  \item[Trainer.]  \texttt{build\_trainer} creates a Lightning \texttt{Trainer}
+    with \texttt{CSVLogger} logging to a fixed
+    \texttt{metrics.csv} path (no version subfolder).  Mixed-precision
+    (\texttt{16-mixed}) is selected automatically when a GPU is available.
+\end{description}
+
+After training, \texttt{train\_utils.export\_plain\_state\_dict} strips the
+\texttt{model.} prefix from the Lightning checkpoint and writes
+\texttt{best\_model.pt}.  This file is consumed at test time without requiring
+a Lightning environment.
+
+\subsection{Reference experiments (§13)}
+
+Seven canonical experiments reproduce the FigShare reference benchmark
+(Table~\ref{tab:seg_exps}).  All share: 5-fold image-level KFold,
+batch size 8 (6 for exp 07), 100 epochs maximum, patience 15,
+Adam $\text{lr}=10^{-4}$, \textit{reference} augmentation, ImageNet
+normalisation, threshold 0.5, seed 42.
+
+\begin{table}[h]
+  \centering
+  \caption{Seven §13 reference segmentation experiments.}
+  \label{tab:seg_exps}
+  \begin{tabular}{L{4.5cm} L{3.5cm} L{3.5cm} C{2.5cm}}
+    \toprule
+    \textbf{Recipe key} & \textbf{Loss} & \textbf{Model} &
+    \textbf{Ref.\ Dice} \\
+    \midrule
+    \texttt{01\_dice}                    & Dice              & U-Net / ResNet-34     & 0.8426 \\
+    \texttt{02\_bce}                     & BCE               & U-Net / ResNet-34     & 0.8485 \\
+    \texttt{03\_dicebce}                 & Dice + BCE        & U-Net / ResNet-34     & 0.8541 \\
+    \texttt{04\_dicefocal}               & Dice + Focal      & U-Net / ResNet-34     & 0.8509 \\
+    \texttt{05\_lovasz}                  & Lovász            & U-Net / ResNet-34     & 0.8418 \\
+    \texttt{06\_clahe\_dicebce}          & Dice + BCE        & U-Net / ResNet-34     & 0.8501 \\
+    \texttt{07\_unetpp\_effb4\_dicebce}  & Dice + BCE        & U-Net++ / EffNet-B4   & \textbf{0.8608} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Segmentation test evaluation (NB05)}
+
+NB05 calls \texttt{sg\_test\_utils.evaluate\_fold} for each fold.
+The function:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item Builds a test DataLoader (\texttt{return\_meta=True}) so each batch
+    carries \texttt{image\_id} alongside $(x, y)$.
+  \item Runs batched inference under \texttt{torch.no\_grad()}.
+  \item Computes the per-image metric suite via
+    \texttt{compute\_per\_image\_metrics\_from\_logits}:
+    Dice, IoU, sensitivity, precision,
+    \texttt{true\_positive\_pixels}, \texttt{false\_positive\_pixels},
+    \texttt{false\_negative\_pixels}, \texttt{total\_pixels},
+    \texttt{gt\_mask\_area\_ratio}, \texttt{pred\_mask\_area\_ratio},
+    \texttt{area\_ratio\_delta}.
+  \item Saves one predicted binary PNG per image under
+    \texttt{outputs/predictions/segmentation/<dataset>/<exp>/fold\_k/}
+    (figshare only; brats2020 skips PNG saving because $\sim$57k masks are
+    not consumed downstream and would exhaust Drive quota).
+  \item Writes the §8 per-fold \texttt{manifest.json}
+    (figshare only; see Section~\ref{sec:manifests}).
+\end{enumerate}
+
+NB05 then calls \texttt{sg\_eval\_utils.summarize\_fold\_results} and
+\texttt{aggregate\_cv\_results} to produce six cross-validation tables
+(Table~\ref{tab:cv_tables}).
+
+\begin{table}[h]
+  \centering
+  \caption{Cross-validation output tables (written under \texttt{outputs/tables/}).}
+  \label{tab:cv_tables}
+  \begin{tabular}{L{5cm} L{9cm}}
+    \toprule
+    \textbf{File} & \textbf{Content} \\
+    \midrule
+    \texttt{cv\_results.csv}          & One row per fold: Dice, IoU, sensitivity, precision (micro) + pixel counts \\
+    \texttt{cv\_summary.csv}          & One row: mean $\pm$ std across folds for each metric; \texttt{report\_*} strings \\
+    \texttt{cv\_summary\_enriched.csv}& One row per metric: mean / std / median / IQR / 95\,\% CI \\
+    \texttt{cv\_by\_class.csv}        & One row per (fold, class): same metrics stratified by tumour type \\
+    \texttt{cv\_class\_summary.csv}   & One row per class: mean $\pm$ std across folds \\
+    \texttt{cv\_per\_image.csv}       & One row per test image: all per-image metrics + metadata \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Prediction manifests (§8)}
+\label{sec:manifests}
+
+Segmentation prediction PNGs have an integrity contract: a per-fold
+\texttt{manifest.json} records the SHA-256 hashes of both the checkpoint and
+the test CSV that produced the masks.
+
+\begin{lstlisting}[language={}, caption={Per-fold manifest schema.}]
+{
+  "seg_experiment_name": "07_unetpp_effb4_dicebce_image_level",
+  "task":                "segmentation",
+  "dataset":             "figshare",
+  "split_scheme":        "image_level",
+  "fold":                3,
+  "checkpoint_path":     "outputs/.../fold_3/best_model.pt",
+  "checkpoint_sha256":   "<hex>",
+  "test_csv_path":       "data/.../fold_3_test.csv",
+  "test_csv_sha256":     "<hex>",
+  "n_predictions":       612,
+  "image_size":          256,
+  "threshold":           0.5,
+  "mask_format":         "binary_uint8_0_255",
+  "model_name":          "smp_unetpp_efficientnetb4",
+  "encoder_weights":     "imagenet",
+  "generated_at":        "2026-05-08T10:00:00Z"
+}
+\end{lstlisting}
+
+Before classification Eval B reads any predicted mask,
+\texttt{file\_utils.verify\_seg\_predictions\_match} re-hashes the checkpoint
+and test CSV and raises \texttt{ValueError} on mismatch.  This prevents silently
+evaluating stale masks when a segmentation model is retrained.
+
+An experiment-level \texttt{prediction\_manifest.json} is written once all
+folds are complete; it records which folds are present and whether the total
+prediction count matches the expected dataset size.
+
+\subsection{Qualitative visualisation (NB04)}
+
+NB04 reads the per-image CSV produced by NB05, identifies the best, worst, and
+a random sample of predictions by Dice score, and runs single-image inference
+\emph{only on those $\sim$9 images per fold} via
+\texttt{sg\_test\_utils.predict\_mask}.  It then calls
+\texttt{sg\_vis\_utils.show\_image\_gt\_pred\_overlay} to produce 4-panel
+figures (greyscale image, ground-truth mask, predicted mask, overlay) saved to
+Drive.  Additional outputs include Dice/IoU histograms, a per-class metrics bar
+chart, and a Dice-vs-IoU scatter plot.
+
+\subsection{Cross-experiment comparison (NB06)}
+
+NB06 auto-discovers every segmentation experiment with a \texttt{cv\_summary.csv}
+under a given dataset and split scheme.  It produces:
+a ranked comparison table (colour-coded by Dice threshold),
+a grouped Dice/IoU bar chart (mean $\pm$ std),
+a per-class Dice heatmap/bar chart,
+and a per-fold scatter plot with mean lines.
+All figures and CSVs are saved directly to Drive.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Classification Pipeline}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{Patch extraction}
+
+Classification receives a tumour patch rather than the full MRI slice.
+\texttt{cls\_data\_utils.extract\_patch} computes the tight bounding box of
+non-zero pixels in the mask, expands it by \texttt{padding\_frac} (default
+10\,\%), makes the box square, clamps it to the image boundary, and resizes to
+\texttt{target\_size}$\times$\texttt{target\_size} pixels using bilinear
+interpolation.
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Training:} ground-truth masks are always used.
+  \item \textbf{Eval A (test):} ground-truth masks from
+    \texttt{data/<dataset>/processed/masks/}.
+  \item \textbf{Eval B (test):} predicted masks from
+    \texttt{outputs/predictions/segmentation/<dataset>/<seg\_exp>/fold\_k/}.
+\end{itemize}
+
+The only difference between Eval A and Eval B is the mask source; the trained
+classification checkpoint is unchanged.
+
+\subsection{Model architecture}
+
+Classification models are built through \texttt{cls\_models.py} using the
+\texttt{timm} library:
+
+\begin{table}[h]
+  \centering
+  \caption{Available classification models.}
+  \begin{tabular}{L{4cm} L{5cm} L{5cm}}
+    \toprule
+    \textbf{Registry key} & \textbf{Architecture} & \textbf{Notes} \\
+    \midrule
+    \texttt{resnet50}                 & ResNet-50           & Baseline (cls01) \\
+    \texttt{efficientnet\_b0}         & EfficientNet-B0     & cls02 \\
+    \texttt{efficientnet\_b4}         & EfficientNet-B4     & cls03; batch 16 \\
+    \texttt{vit\_small\_patch16\_224} & ViT-Small/16        & cls04; batch 16 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Training (NB07)}
+
+Training uses ground-truth masks.  The training loop mirrors the segmentation
+setup with \texttt{BrainTumorClsModule}, which accumulates macro-F1 across
+validation batches.  The monitor metric is \texttt{val\_macro\_f1}
+(maximised), with a default patience of 10 epochs and a cosine schedule.
+
+Losses available: \texttt{cross\_entropy},
+\texttt{cross\_entropy\_smooth} (label smoothing $\lambda=0.1$ by default),
+\texttt{focal\_ce}.
+
+\subsection{Classification test evaluation (NB08)}
+
+NB08 runs \texttt{cls\_test\_utils.evaluate\_fold\_cls} twice per fold:
+once with \texttt{mask\_source="gt"} (Eval A) and once with
+\texttt{mask\_source="predicted"} (Eval B).  Before Eval B,
+\texttt{verify\_seg\_predictions\_match} validates the manifest hash.
+
+Each evaluation writes per-fold tables:
+\texttt{fold\_k\_test\_per\_image.csv},
+\texttt{fold\_k\_test\_by\_class.csv},
+\texttt{fold\_k\_confusion\_matrix.csv},
+and saves a confusion matrix PNG and sample patch figures to Drive.
+
+Output directories separate the two evaluation variants:
+\begin{itemize}[leftmargin=1.5em]
+  \item Eval A: \texttt{outputs/tables/classification/<ds>/<cls\_exp>/eval\_gt/}
+  \item Eval B: \texttt{outputs/tables/classification/<ds>/<cls\_exp>/eval\_pred\_\_<seg\_exp>/}
+\end{itemize}
+
+The headline metric is the \textbf{gap} between Eval A and Eval B macro-F1,
+mean $\pm$ std across 5 folds:
+\begin{equation}
+  \Delta F_1 = \overline{F_1^{(A)}} - \overline{F_1^{(B)}}
+\end{equation}
+A positive gap quantifies the performance degradation caused by replacing
+ground-truth masks with predicted masks in the patch extraction stage.
+
+\subsection{Classification results visualisation (NB09)}
+
+NB09 reads saved CSVs from Drive (no inference; CPU-only) and produces
+publication-quality figures via \texttt{cls\_vis\_utils}:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{plot\_confusion\_pair}: two confusion matrices side-by-side
+    (Eval A vs.\ Eval B), row-normalised for colour, raw counts as text.
+  \item \texttt{plot\_per\_class\_f1}: grouped bar chart (one group per class +
+    macro) with Eval A / Eval B bars and cross-fold error bars.
+  \item \texttt{plot\_eval\_gap}: left panel shows per-fold macro-F1 dots
+    connected by gap lines; right panel shows horizontal gap bars with
+    mean $\pm$ std annotation.
+  \item \texttt{plot\_sample\_patches}: grid of tumour patches
+    (rows = true class, columns = examples) with green/red borders for
+    correct/incorrect predictions.
+\end{itemize}
+
+\subsection{Fold alignment guarantee}
+
+Because classification and segmentation share the same fold CSV generation
+code (same split scheme, same seed, same \texttt{patient\_id} grouping),
+fold $k$ of the classification test set is identical to fold $k$ of the
+segmentation test set.  Predicted masks for classification fold $k$ live at
+\texttt{outputs/predictions/segmentation/\ldots/fold\_k/<image\_id>.png} --- no
+out-of-fold lookup is required.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Notebook Execution Workflow}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{table}[h]
+  \centering
+  \caption{Notebook responsibilities and execution order.}
+  \label{tab:notebooks}
+  \begin{tabular}{L{1.5cm} L{4.5cm} L{8cm}}
+    \toprule
+    \textbf{NB} & \textbf{Name} & \textbf{Role} \\
+    \midrule
+    NB01-fig & \texttt{01\_data\_preparation\_figshare} & \texttt{.mat} $\to$ PNG, build \texttt{metadata.csv} \\
+    NB01-bra & \texttt{01\_data\_preparation\_brats2020} & \texttt{.h5} $\to$ PNG (FLAIR + whole-tumour mask) \\
+    NB02     & \texttt{02\_split}                        & Generate fold CSVs for chosen dataset + scheme \\
+    \midrule
+    NB03     & \texttt{03\_train}                        & Train seg model; export \texttt{best\_model.pt} \\
+    NB04     & \texttt{04\_data\_vis}                    & Qualitative overlay figures (reads NB05 tables) \\
+    NB05     & \texttt{05\_test}                         & Quantitative seg eval; save PNGs + manifests \\
+    NB06     & \texttt{06\_seg\_compare}                 & Cross-experiment comparison table + charts \\
+    \midrule
+    NB06-cls & \texttt{06\_classification\_data}         & QA: visualise patches, verify mask sources \\
+    NB07     & \texttt{07\_train\_cls}                   & Train classification model \\
+    NB08     & \texttt{08\_test\_cls}                    & Run Eval A + Eval B; compute gap \\
+    NB09     & \texttt{09\_cls\_results}                 & Publication figures from saved CSVs \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The canonical execution order is:
+NB01 $\to$ NB02 $\to$ NB03 $\to$ NB05 $\to$ NB04 $\to$ NB06
+$\to$ NB07 $\to$ NB08 $\to$ NB09.
+NB04 is placed after NB05 because it reads per-image metrics written by NB05.
+
+Each notebook starts with:
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Cell 1}: \texttt{\%pip install} dependencies.
+  \item \textbf{Cell 2}: \texttt{setup\_environment} (mount Drive, clone/pull repo).
+  \item \textbf{Cell 3}: \texttt{EXPERIMENT} config; sanity assertions.
+  \item \textbf{Cell 4}: \texttt{copy\_to\_local} (training/eval notebooks only).
+  \item \textit{[Training cells]}
+  \item \textbf{Last cell}: \texttt{sync\_outputs\_to\_drive} followed by
+    \texttt{runtime.unassign()} (conditional on \texttt{SYNC\_OK}).
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Evaluation Metrics}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\subsection{Segmentation metrics}
+
+All segmentation metrics use \emph{micro} (globally pooled) reduction.
+Pixel counts are accumulated across all images in a fold before the metric is
+computed:
+
+\begin{align}
+  \text{Dice}_\text{micro} &= \frac{2\,TP + \epsilon}{2\,TP + FP + FN + \epsilon} \\
+  \text{IoU}_\text{micro}  &= \frac{TP + \epsilon}{TP + FP + FN + \epsilon} \\
+  \text{Sensitivity}_\text{micro} &= \frac{TP + \epsilon}{TP + FN + \epsilon} \\
+  \text{Precision}_\text{micro}   &= \frac{TP + \epsilon}{TP + FP + \epsilon}
+\end{align}
+
+The per-image metric suite additionally records pixel-count columns
+(\texttt{true\_positive\_pixels}, \texttt{false\_positive\_pixels},
+\texttt{false\_negative\_pixels}, \texttt{total\_pixels}) and area ratios
+(\texttt{gt\_mask\_area\_ratio} $=$ GT pixels / total pixels,
+\texttt{pred\_mask\_area\_ratio}, \texttt{area\_ratio\_delta}).
+
+Cross-fold statistics are reported as mean $\pm$ standard deviation
+across the 5 folds.  The enriched summary additionally computes per-metric
+median, inter-quartile range, and a 95\,\% confidence interval
+(Student-$t$, $n=5$).
+
+\subsection{Classification metrics}
+
+The primary classification metric is \textbf{macro-F1}
+(unweighted mean of per-class F1 scores), monitored during training and
+reported at test time.  Additional metrics: accuracy, per-class precision /
+recall / F1, and a $3\times 3$ confusion matrix.
+All are computed from collected logit tensors after the full test pass
+(\texttt{cls\_metrics.compute\_per\_image\_metrics\_cls}).
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Reproducibility}
+% ══════════════════════════════════════════════════════════════════════════════
+
+A run is fully specified by three artefacts:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Split config.}
+    \texttt{data/<dataset>/splits/<scheme>/cv\_split\_config.json} records the
+    split method, random seed, and number of folds.
+  \item \textbf{Experiment config.}
+    \texttt{outputs/checkpoints/<task>/<dataset>/<exp>/fold\_k/experiment\_config.json}
+    is the full \texttt{EXPERIMENT} dict plus reproducibility metadata
+    (git SHA, branch, clean-tree flag, Python + library versions, GPU info).
+  \item \textbf{Prediction manifest.}  For Eval B only: the per-fold
+    \texttt{manifest.json} links each predicted mask file to the checkpoint
+    SHA-256 and test-CSV SHA-256 that produced it.
+\end{enumerate}
+
+Global seeding is handled by \texttt{train\_utils.set\_global\_seed}, which
+calls \texttt{pl.seed\_everything(seed, workers=True)} and sets
+\texttt{PYTHONHASHSEED}.  CuDNN benchmark mode is disabled only when
+\texttt{deterministic=True} is explicitly requested (the default leaves it
+enabled for speed, with reproducibility guaranteed at the fold-CSV level rather
+than at the bit level).
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Key Design Decisions}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{description}[leftmargin=2em]
+  \item[Registry over inheritance.]
+    All variable components (model, loss, optimiser, scheduler, augmentation)
+    are selected by string name in \texttt{EXPERIMENT}.  Old experiments
+    reproduce without code changes; new variants are added as new branches.
+
+  \item[Micro reduction for segmentation.]
+    Per-batch Dice averaging is incorrect for micro metrics (it weights each
+    image equally regardless of size).  The module accumulates
+    $(tp, fp, fn, tn)$ tensors across the epoch and computes global pooled
+    scores once at epoch end.
+
+  \item[Manifest-guarded Eval B.]
+    SHA-256 hashing of checkpoints and test CSVs in prediction manifests
+    catches the failure mode where a segmentation model is retrained but
+    old masks are still on disk, silently corrupting Eval B.
+
+  \item[Skip PNGs for brats2020.]
+    The brats2020 dataset contains $\sim$57{,}000 slices.  Saving binary
+    PNG predictions for all slices would consume roughly 57\,GB of Drive
+    quota and serves no downstream purpose (there is no classification step
+    for brats2020).  The \texttt{save\_pngs=False} flag suppresses both PNG
+    writing and manifest creation for this dataset.
+
+  \item[Local SSD scratch during training.]
+    Training writes (checkpoints, logs) go to the Colab local SSD under
+    \texttt{/content/Senior\_Project\_local/}.  Sync to Drive happens once at
+    the end of the run.  This avoids Drive FUSE write-latency degradation
+    during checkpoint saving, which can cause training to stall.
+
+  \item[Patient-level vs.\ image-level splits.]
+    The \texttt{patient\_level} scheme is the methodologically correct choice:
+    all images from one patient are assigned to a single fold, preventing
+    data leakage through correlated slices.  The \texttt{image\_level} scheme
+    is provided exclusively to reproduce the numbers from the FigShare
+    reference benchmark for comparison purposes.
+\end{description}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+% ══════════════════════════════════════════════════════════════════════════════
+
+This pipeline provides a complete, reproducible framework for brain tumour
+analysis encompassing preprocessing, cross-validation splitting, segmentation
+training and evaluation, classification training and evaluation (ground-truth
+and predicted mask variants), and publication-quality result visualisation.
+
+The registry-driven architecture makes it straightforward to add new models,
+losses, optimisers, or augmentation strategies without touching existing code
+paths.  The prediction-manifest system ensures that the segmentation--classification
+coupling is integrity-checked rather than assumed.  All experiment configurations
+are serialised to disk, making every result traceable to a specific checkpoint,
+test split, and software revision.
+
+\bigskip
+
+\noindent\textbf{Headline results} (\texttt{figshare}, image-level,
+5-fold CV):
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Best segmentation Dice: $\mathbf{0.8608 \pm \sigma}$ —
+    U-Net++ / EfficientNet-B4, Dice+BCE loss.
+  \item Classification gap $\Delta F_1 = \overline{F_1^{(A)}} - \overline{F_1^{(B)}}$
+    quantifies deployment penalty of imperfect ROI localisation.
+\end{itemize}
+
+\end{document}

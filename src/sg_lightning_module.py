@@ -86,11 +86,16 @@ class BrainTumorSegModule(pl.LightningModule):
         self.metric_kind = metric_kind
         self._metric_pairs = get_metric_kind_pairs(metric_kind)
 
-        # Per-epoch stat buffers — flushed in _flush_epoch_buffers.
+        # Per-epoch stat buffers — flushed in _flush_val_buffers / on_test_epoch_end.
         self._val_tp: list = []
         self._val_fp: list = []
         self._val_fn: list = []
         self._val_tn: list = []
+
+        self._test_tp: list = []
+        self._test_fp: list = []
+        self._test_fn: list = []
+        self._test_tn: list = []
 
     # ------------------------------------------------------------------ #
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -142,6 +147,26 @@ class BrainTumorSegModule(pl.LightningModule):
         if not self._val_tp:
             return
         self._flush_val_buffers()
+
+    # ------------------------------------------------------------------ #
+    # Test
+    # ------------------------------------------------------------------ #
+    def test_step(self, batch, batch_idx):
+        x, y = batch[0], batch[1]
+        logits = self(x)
+        tp, fp, fn, tn = get_smp_stats(logits, y, threshold=self.threshold)
+        self._test_tp.append(tp); self._test_fp.append(fp)
+        self._test_fn.append(fn); self._test_tn.append(tn)
+
+    def on_test_epoch_end(self):
+        if not self._test_tp:
+            return
+        tp = torch.cat(self._test_tp); fp = torch.cat(self._test_fp)
+        fn = torch.cat(self._test_fn); tn = torch.cat(self._test_tn)
+        for val_name, fn_ in self._metric_pairs.items():
+            self.log(val_name.replace("val_", "test_"), fn_(tp, fp, fn, tn))
+        self._test_tp.clear(); self._test_fp.clear()
+        self._test_fn.clear(); self._test_tn.clear()
 
     # ------------------------------------------------------------------ #
     # Optimizer + scheduler — both registry-driven
