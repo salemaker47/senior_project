@@ -187,7 +187,7 @@ def evaluate_fold_cls(
                 "mask_source": mask_source,
                 "dataset":     dataset,
                 "fold":        int(fold),
-                "experiment":  experiment_name,
+                "experiment_name": experiment_name,
             }
             for k in PER_IMAGE_METRIC_NAMES:
                 record[k] = int(m[k][i]) if k in ("predicted_class", "true_class", "correct") \

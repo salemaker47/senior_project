@@ -199,8 +199,8 @@ def plot_confusion_pair(
     for ax, cv_conf, title in zip(axes, [cv_confusion_a, cv_confusion_b], [title_a, title_b]):
         im = _render_cm_on_ax(ax, cv_conf, title=title)
 
-    # Shared colour-bar anchored to the right panel
-    fig.colorbar(im, ax=axes[1], fraction=0.046, pad=0.04)
+    # Shared colour-bar spanning both panels
+    fig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.046, pad=0.04)
 
     if suptitle:
         fig.suptitle(suptitle, fontsize=11, y=1.02)
@@ -291,6 +291,13 @@ def plot_per_class_f1(
             bar.get_x() + bar.get_width() / 2.0, h + 0.012,
             f"{h:.3f}", ha="center", va="bottom", fontsize=7.5, color=_COLOR_A,
         )
+    if has_b:
+        for bar in ax.patches[n_groups:]:
+            h = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.0, h + 0.012,
+                f"{h:.3f}", ha="center", va="bottom", fontsize=7.5, color=_COLOR_B,
+            )
 
     fig.tight_layout()
     _tight_save(fig, save_path)
