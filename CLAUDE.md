@@ -77,8 +77,7 @@ Senior_Project/
 ├── notebooks/
 │   ├── setups/
 │   │   ├── 01_data_preparation_figshare.ipynb
-│   │   ├── 01_data_preparation_brats2020.ipynb
-│   │   └── 02_split.ipynb
+│   │   └── 01_data_preparation_brats2020.ipynb
 │   ├── segmentation/
 │   │   ├── 03_train.ipynb
 │   │   ├── 04_data_vis.ipynb
@@ -239,12 +238,12 @@ EXPERIMENT = {
     "optimizer_name":   "adamw",
     "optimizer_kwargs": {"lr": 1e-4, "weight_decay": 1e-4},
     "scheduler_name":   "cosine",
-    "scheduler_kwargs": {"T_max": 50, "eta_min": 1e-6},
+    "scheduler_kwargs": {"T_max": 100, "eta_min": 1e-6},
 
     "monitor":      "val_macro_f1",
     "monitor_mode": "max",
 
-    "max_epochs": 50,
+    "max_epochs": 100,
     "patience":   10,
     "seed":       42,
 }
@@ -486,9 +485,8 @@ Recommended: `pip install nbstripout && nbstripout --install` in the local repo 
 
 | folder | notebook | role |
 |---|---|---|
-| `setups/` | `01_data_preparation_figshare.ipynb` | figshare: `.mat` → PNG, build `metadata.csv`, `preprocessing_config.json` |
-| `setups/` | `01_data_preparation_brats2020.ipynb` | brats2020: `.h5` → PNG (FLAIR + whole-tumor mask), same output layout |
-| `setups/` | `02_split.ipynb` | per-dataset, per-scheme: build fold CSVs. Knobs: `DATASET`, `SPLIT_SCHEME` |
+| `setups/` | `01_data_preparation_figshare.ipynb` | figshare: `.mat` → PNG, build `metadata.csv`, `preprocessing_config.json`; also generates both `patient_level` and `image_level` fold CSVs in the same run |
+| `setups/` | `01_data_preparation_brats2020.ipynb` | brats2020: `.h5` → PNG (FLAIR + whole-tumor mask), same output layout; also generates fold CSVs |
 | `segmentation/` | `03_train.ipynb` | train one fold or all 5, per `EXPERIMENT` dict |
 | `segmentation/` | `04_data_vis.ipynb` | qualitative figures: best/worst/random predictions, per-class Dice bar chart, training curves |
 | `segmentation/` | `05_test.ipynb` | quantitative test eval, writes prediction PNGs + per-fold manifests + all 6 CV tables |
@@ -527,7 +525,7 @@ All use: 5-fold image-level KFold, batch 8 (6 for exp 07), max_epochs=100, patie
 | `cls03_effb4` | EfficientNet-B4 | batch_size=16 |
 | `cls04_vit` | ViT-Small/16 | batch_size=16 |
 
-All use: AdamW lr=1e-4 wd=1e-4, cosine schedule T_max=50, label-smoothing CE (0.1), max_epochs=50, patience=10, seed=42.
+All use: AdamW lr=1e-4 wd=1e-4, cosine schedule T_max=100, label-smoothing CE (0.1), max_epochs=100, patience=10, seed=42.
 
 ---
 

@@ -60,12 +60,12 @@ BASE_EXPERIMENT: Dict[str, Any] = {
     "optimizer_kwargs": {"lr": 1e-4, "weight_decay": 1e-4},
 
     "scheduler_name":   "cosine",
-    "scheduler_kwargs": {"T_max": 50, "eta_min": 1e-6},
+    "scheduler_kwargs": {"T_max": 100, "eta_min": 1e-6},
 
     "monitor":      "val_macro_f1",
     "monitor_mode": "max",
 
-    "max_epochs": 50,
+    "max_epochs": 100,
     "patience":   10,
     "seed":       42,
 }

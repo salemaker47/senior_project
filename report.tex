@@ -928,14 +928,17 @@ test split, and software revision.
 
 \bigskip
 
-\noindent\textbf{Headline results} (\texttt{figshare}, image-level,
-5-fold CV):
+\noindent\textbf{Known results} (\texttt{figshare}, image-level, 5-fold CV):
 
 \begin{itemize}[leftmargin=1.5em]
-  \item Best segmentation Dice: $\mathbf{0.8608 \pm \sigma}$ —
-    U-Net++ / EfficientNet-B4, Dice+BCE loss.
+  \item Segmentation reference benchmark (5-fold mean Dice):
+    $\mathbf{0.8608}$ — U-Net++ / EfficientNet-B4, Dice+BCE loss.
+  \item Fold~1 pilot result for U-Net++/EfficientNet-B4 DiceBCE:
+    Dice~$= 0.8706$, IoU~$= 0.7708$ (consistent with and marginally above
+    the reference mean; remaining folds and Experiments~01--06 pending).
   \item Classification gap $\Delta F_1 = \overline{F_1^{(A)}} - \overline{F_1^{(B)}}$
-    quantifies deployment penalty of imperfect ROI localisation.
+    (Eval~A minus Eval~B macro-F1) quantifies the deployment cost of imperfect
+    ROI localisation; full cross-validation values pending experiment completion.
 \end{itemize}
 
 \end{document}

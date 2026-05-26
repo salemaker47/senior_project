@@ -102,10 +102,10 @@ strategy that matches the publicly available reference benchmark. Performance is
 the Dice Similarity Coefficient (DSC) and Intersection-over-Union (IoU), with globally pooled
 (micro-averaged) reductions to handle class imbalance.
 
-A preliminary result for fold~1 of the U-Net++ EfficientNet-B4 DiceBCE configuration yields a
-test Dice of 0.8706, which is consistent with and marginally above the five-fold reference
-benchmark of 0.8608 for this architecture. Full cross-validation results for all seven
-configurations are in progress.
+A fold~1 result for the U-Net++ EfficientNet-B4 DiceBCE configuration yields a test Dice of
+0.8706 and a test IoU of 0.7708, consistent with and marginally above the five-fold reference
+benchmark of 0.8608 for this architecture. Cross-validation results for the remaining six
+configurations are pending completion of the training runs.
 
 %% ── TABLE OF CONTENTS ────────────────────────────────────────────────────────
 \newpage
@@ -300,7 +300,7 @@ stronger architecture (U-Net++ with EfficientNet-B4) provides consistent gains o
                     CLAHE U-Net (DiceBCE),\\
                     U-Net++ (EfficientNet-B4)}
         & \makecell{Figshare + \\ BraTS2020}
-        & \makecell{Five-fold \\ cross-validation \\ (in progress)} \\ \hline
+        & \makecell{Fold~1 Dice: 0.8706 \\ (Exp.~07); full CV \\ pending} \\ \hline
 
         \end{tabular}
     }
@@ -743,8 +743,8 @@ are reproduced here for direct comparison.
 \subsection{Discussion}
 \label{sub:discussion}
 
-The only completed result currently available is fold~1 of Experiment~07 (U-Net++
-EfficientNet-B4 DiceBCE), which achieved a test Dice of 0.8706 and a test IoU of 0.7708.
+The completed result for fold~1 of Experiment~07 (U-Net++
+EfficientNet-B4 DiceBCE) yields a test Dice of 0.8706 and a test IoU of 0.7708.
 This result exceeds the five-fold reference mean of 0.8608 for this architecture, which is
 consistent with expected fold-level variance: individual folds differ from the five-fold mean
 depending on the relative difficulty of each test partition.
@@ -782,7 +782,7 @@ interest:
 
 The reference benchmark (Table~\ref{tab:reference_results}) indicates that, across all seven
 configurations, the performance range is narrow: from 0.8418 (Lovász, Exp.\ 05) to 0.8608
-(U-Net++ EfficientNet-B4, Exp.\ 07). The preliminary fold~1 result of 0.8706 for Experiment~07
+(U-Net++ EfficientNet-B4, Exp.\ 07). The fold~1 result of 0.8706 for Experiment~07
 is consistent with this range and supports the hypothesis that the stronger encoder and nested
 skip connections offer a meaningful but not dramatic improvement over the ResNet-34 U-Net
 baseline.
@@ -802,15 +802,14 @@ preprocessing (CLAHE), and architecture (U-Net++ with EfficientNet-B4).
 
 All configurations share the same optimizer (Adam, $lr = 10^{-4}$), learning rate schedule
 (ReduceLROnPlateau, factor 0.1, patience 5), early stopping criterion (patience 15 epochs on
-validation Dice), and random seed (42), providing a controlled basis for comparison. Evaluation
-is currently in progress. A preliminary fold~1 result for the U-Net++ EfficientNet-B4 DiceBCE
-configuration yields a test Dice of 0.8706 and a test IoU of 0.7708, consistent with the
-reference benchmark of 0.8608 for this architecture. The training dynamics for this fold indicate
-healthy convergence with appropriate learning rate decay, confirming that the pipeline is
-correctly implemented.
+validation Dice), and random seed (42), providing a controlled basis for comparison. A fold~1
+result for the U-Net++ EfficientNet-B4 DiceBCE configuration yields a test Dice of 0.8706 and
+a test IoU of 0.7708, consistent with the reference benchmark of 0.8608 for this architecture.
+The training dynamics for this fold indicate healthy convergence with appropriate learning rate
+decay, confirming that the pipeline is correctly implemented.
 
 The remaining four folds for Experiment~07 and all five folds for Experiments~01--06 are
-currently running. Once all evaluations are complete, five-fold mean Dice and IoU will be
+pending completion. Once all evaluations are complete, five-fold mean Dice and IoU will be
 reported for each configuration and compared against the published reference benchmarks.
 The comparisons will quantify (i) the relative impact of five different loss functions on a
 fixed U-Net architecture, (ii) the isolated benefit of CLAHE preprocessing, and (iii) the
