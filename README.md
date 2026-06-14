@@ -208,7 +208,7 @@ is retrained and the old predictions on disk silently go stale.
 
 ---
 
-## Reference experiments
+## experiments
 
 ### Segmentation (figshare, image-level)
 
@@ -221,6 +221,15 @@ is retrained and the old predictions on disk silently go stale.
 | `05_lovasz_image_level` | Lovasz | U-Net / ResNet34 | 0.8503 |
 | `06_clahe_dicebce_image_level` | CLAHE + Dice + BCE | U-Net / ResNet34 | 0.8533 |
 | `07_unetpp_effb4_dicebce_image_level` | Dice + BCE | U-Net++ / EfficientNet-B4 | **0.8643** |
+
+### Segmentation (brats2020, image-level)
+
+
+| exp name | loss | architecture | reference Dice |
+|---|---|---|---|
+| `03_dicebce_image_level` | Dice + BCE | U-Net / ResNet34 | 0.9365 |
+| `06_clahe_dicebce_image_level` | CLAHE + Dice + BCE | U-Net / ResNet34 | 0.9368 |
+| `07_unetpp_effb4_dicebce_image_level` | Dice + BCE | U-Net++ / EfficientNet-B4 | **0.9460** |
 
 All use Adam lr=1e-4, ReduceLROnPlateau (factor=0.1, patience=5), max_epochs=100,
 early-stopping patience=15, threshold=0.5, seed=42.
