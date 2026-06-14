@@ -214,13 +214,13 @@ is retrained and the old predictions on disk silently go stale.
 
 | exp name | loss | architecture | reference Dice |
 |---|---|---|---|
-| `01_dice_image_level` | Dice | U-Net / ResNet34 | 0.8426 |
-| `02_bce_image_level` | BCE | U-Net / ResNet34 | 0.8485 |
-| `03_dicebce_image_level` | Dice + BCE | U-Net / ResNet34 | 0.8541 |
-| `04_dicefocal_image_level` | Dice + Focal | U-Net / ResNet34 | 0.8509 |
-| `05_lovasz_image_level` | Lovasz | U-Net / ResNet34 | 0.8418 |
-| `06_clahe_dicebce_image_level` | CLAHE + Dice + BCE | U-Net / ResNet34 | 0.8501 |
-| `07_unetpp_effb4_dicebce_image_level` | Dice + BCE | U-Net++ / EfficientNet-B4 | **0.8608** |
+| `01_dice_image_level` | Dice | U-Net / ResNet34 | 0.8513 |
+| `02_bce_image_level` | BCE | U-Net / ResNet34 | 0.8575 |
+| `03_dicebce_image_level` | Dice + BCE | U-Net / ResNet34 | 0.8545 |
+| `04_dicefocal_image_level` | Dice + Focal | U-Net / ResNet34 | 0.8510 |
+| `05_lovasz_image_level` | Lovasz | U-Net / ResNet34 | 0.8503 |
+| `06_clahe_dicebce_image_level` | CLAHE + Dice + BCE | U-Net / ResNet34 | 0.8533 |
+| `07_unetpp_effb4_dicebce_image_level` | Dice + BCE | U-Net++ / EfficientNet-B4 | **0.8643** |
 
 All use Adam lr=1e-4, ReduceLROnPlateau (factor=0.1, patience=5), max_epochs=100,
 early-stopping patience=15, threshold=0.5, seed=42.
@@ -257,7 +257,3 @@ Google Colab
 Training writes everything to `/content/Senior_Project_local/` (local Colab
 SSD) to avoid FUSE-hang on sustained Drive writes. One batched `copytree`
 per output category syncs results to Drive at the end of the run.
-
-Never edit `.py` files inside Colab — edits to the local clone die when the
-runtime disconnects. All code changes go through VS Code → GitHub → `git pull`
-in Cell 2.
