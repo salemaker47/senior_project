@@ -266,3 +266,6 @@ Google Colab
 Training writes everything to `/content/Senior_Project_local/` (local Colab
 SSD) to avoid FUSE-hang on sustained Drive writes. One batched `copytree`
 per output category syncs results to Drive at the end of the run.
+
+Drive Link: https://drive.google.com/drive/folders/1LJJ3oHoZJ0irDpu5NerVhcBhaBOzS06Q?usp=drive_link
+Github Link: https://github.com/salemaker47/senior_project
