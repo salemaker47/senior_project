@@ -212,7 +212,7 @@ is retrained and the old predictions on disk silently go stale.
 
 ### Segmentation (figshare, image-level)
 
-| exp name | loss | architecture | reference Dice |
+| exp name | loss | architecture | Dice |
 |---|---|---|---|
 | `01_dice_image_level` | Dice | U-Net / ResNet34 | 0.8513 |
 | `02_bce_image_level` | BCE | U-Net / ResNet34 | 0.8575 |
@@ -225,7 +225,7 @@ is retrained and the old predictions on disk silently go stale.
 ### Segmentation (brats2020, image-level)
 
 
-| exp name | loss | architecture | reference Dice |
+| exp name | loss | architecture | Dice |
 |---|---|---|---|
 | `03_dicebce_image_level` | Dice + BCE | U-Net / ResNet34 | 0.9365 |
 | `06_clahe_dicebce_image_level` | CLAHE + Dice + BCE | U-Net / ResNet34 | 0.9368 |
